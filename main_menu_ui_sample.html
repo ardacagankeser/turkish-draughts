@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Checkers AI - Main Menu</title>
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com" rel="preconnect" />
+    <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Manrope:wght@200..800&amp;family=Space+Grotesk:wght@300..700&amp;display=swap"
+        rel="stylesheet" />
+    <!-- Material Symbols -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#1c5b97",
+                        "primary-dark": "#164a7d",
+                        "background-light": "#f5f5f5",
+                        "background-dark": "#0a0a0a",
+                        "glass-border": "rgba(255, 255, 255, 0.1)",
+                        "glass-surface": "rgba(255, 255, 255, 0.03)",
+                    },
+                    fontFamily: {
+                        "display": ["Space Grotesk", "sans-serif"],
+                        "body": ["Manrope", "sans-serif"],
+                    },
+                    backgroundImage: {
+                        'glass-gradient': 'linear-gradient(145deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%)',
+                    },
+                    boxShadow: {
+                        'glow': '0 0 20px rgba(28, 91, 151, 0.3)',
+                    }
+                },
+            },
+        }
+    </script>
+    <style>
+        /* Custom scrollbar for webkit */
+        ::-webkit-scrollbar {
+            width: 8px
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #0a0a0a
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #2a3137;
+            border-radius: 4px
+        }
+
+        .glass-panel {
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: linear-gradient(180deg, rgba(30, 30, 30, 0.6) 0%, rgba(10, 10, 10, 0.8) 100%)
+        }
+
+        .checkers-bg {
+            background-image: radial-gradient(circle at 50% 50%, rgba(28, 91, 151, 0.15) 0%, rgba(10, 10, 10, 0) 70%), linear-gradient(rgba(10, 10, 10, 0.8), rgba(10, 10, 10, 0.95)), url(https://lh3.googleusercontent.com/aida-public/AB6AXuBvG0ypDNf1S9yiZ10ZpGVEdpBGB4fSy4XGafgltS7JAz1Rl5SJTZaUXYnKZei-0ZImjk_BDWNZxjJB7YgonPSOaRWDM3fbcJSZ2qHI92WqHfM-h1cSrTRqyygRMXXqo_1fs5LUZxqRFTvEyH8dh6w3-RW70mtAAUUuiEEx_pQn0eN3zQ31dLwughjbnKgoKv3PTtnGVcfD07uBOI91TU44YRGOo3JoOF2XQnemEI2pfsW4v0AUx6kgNftTAyQo41ibaj1MsRkgj4CO);
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed
+        }
+
+        .difficulty-card:hover {
+            border-color: #1c5b97;
+            box-shadow: 0 0 15px rgba(28, 91, 151, 0.2)
+        }
+
+        .difficulty-card.active {
+            border-color: #1c5b97;
+            background: rgba(28, 91, 151, 0.1);
+            box-shadow: 0 0 20px rgba(28, 91, 151, 0.4)
+        }
+    </style>
+</head>
+
+<body
+    class="relative flex min-h-screen w-full flex-col bg-background-light dark:bg-background-dark text-white font-body checkers-bg overflow-x-hidden">
+    <!-- Top Navigation -->
+    <header class="w-full z-10 border-b border-glass-border bg-[#0a0a0a]/50 backdrop-blur-md sticky top-0">
+        <div class="max-w-[1440px] mx-auto px-6 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-3 text-white group cursor-pointer">
+                <div
+                    class="size-8 rounded-md bg-primary flex items-center justify-center shadow-glow transition-transform group-hover:scale-110">
+                    <span class="material-symbols-outlined text-white" style="font-size: 20px;">grid_view</span>
+                </div>
+                <h2 class="text-white text-xl font-display font-bold tracking-tight">CHECKERS <span
+                        class="text-primary font-light">AI</span></h2>
+            </div>
+            <div class="flex items-center gap-6">
+                <div
+                    class="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-glass-surface border border-glass-border">
+                    <span class="material-symbols-outlined text-green-400 text-[18px]">circle</span>
+                    <span class="text-xs font-medium text-gray-300 uppercase tracking-wider">Server Online</span>
+                </div>
+                <button
+                    class="flex items-center gap-3 pl-2 pr-4 py-1.5 rounded-full bg-glass-surface border border-glass-border hover:bg-white/5 transition-colors group">
+                    <div class="size-8 rounded-full bg-cover bg-center border border-primary/50"
+                        data-alt="User profile avatar showing a stylized robot face"
+                        style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuBNr9Thwun4Eh8-sVGhRd0cqwxMG_KiJmdZRRgKdyILNw8H3yhzRIOaBAtK-U9ED3Yr5xSbZ4qBars2rT4LdhQB-_Bjx48trTS3Z-aTjwbqed4hkafgsdd0n17JDlkgRMXkUlJ-y973WxmKtvLyiZCo45qJIbf6GUSu64KtPALVZpXlHbyHMaJShli6f14WyPMJcyPYpIt-5oQlqAiv_1WSSYmf6gEZDaLMTrixITU0jkdXTAmscER15r2C5_50y2S9Gn6L08JuKPbd");'>
+                    </div>
+                    <div class="flex flex-col items-start">
+                        <span class="text-xs font-bold text-white leading-none">AlexDev</span>
+                        <span class="text-[10px] text-primary font-medium leading-none mt-1">ELO 1450</span>
+                    </div>
+                    <span
+                        class="material-symbols-outlined text-gray-400 text-sm group-hover:text-white transition-colors">expand_more</span>
+                </button>
+            </div>
+        </div>
+    </header>
+    <!-- Main Content Area -->
+    <main class="flex-grow flex flex-col justify-center py-10 px-6 relative z-0">
+        <div class="max-w-[1200px] w-full mx-auto grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+            <!-- Left Column: Branding & Main Menu -->
+            <div class="lg:col-span-5 flex flex-col gap-10">
+                <div class="space-y-2">
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="h-[1px] w-8 bg-primary"></span>
+                        <span class="text-primary text-sm font-bold tracking-[0.2em] uppercase">Deep Learning Engine
+                            v4.0</span>
+                    </div>
+                    <h1 class="text-6xl md:text-7xl font-display font-bold leading-[0.9] tracking-tight">
+                        MASTER<br />
+                        THE<br />
+                        <span class="text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-500">BOARD</span>
+                    </h1>
+                    <p class="text-gray-400 text-lg max-w-md font-light mt-4 leading-relaxed">
+                        Experience the next evolution of strategy. Challenge a neural network trained on millions of
+                        historic matches.
+                    </p>
+                </div>
+                <!-- Glass Menu -->
+                <nav class="flex flex-col gap-4 w-full max-w-md">
+                    <button
+                        class="group relative flex items-center justify-between p-5 w-full glass-panel rounded-xl text-left transition-all hover:bg-white/5 hover:translate-x-2">
+                        <div class="flex items-center gap-4">
+                            <div
+                                class="p-2 rounded-lg bg-primary/20 text-primary group-hover:bg-primary group-hover:text-white transition-colors">
+                                <span class="material-symbols-outlined">swords</span>
+                            </div>
+                            <div>
+                                <h3 class="font-display font-bold text-lg text-white">Play Online</h3>
+                                <p class="text-xs text-gray-400">Ranked Matchmaking</p>
+                            </div>
+                        </div>
+                        <span
+                            class="material-symbols-outlined text-gray-500 group-hover:text-white transition-colors">arrow_forward</span>
+                    </button>
+                    <button
+                        class="group relative flex items-center justify-between p-5 w-full glass-panel rounded-xl text-left transition-all hover:bg-white/5 hover:translate-x-2">
+                        <div class="flex items-center gap-4">
+                            <div
+                                class="p-2 rounded-lg bg-white/5 text-gray-300 group-hover:bg-primary group-hover:text-white transition-colors">
+                                <span class="material-symbols-outlined">group</span>
+                            </div>
+                            <div>
+                                <h3 class="font-display font-bold text-lg text-white">Local Versus</h3>
+                                <p class="text-xs text-gray-400">2 Players on this device</p>
+                            </div>
+                        </div>
+                        <span
+                            class="material-symbols-outlined text-gray-500 group-hover:text-white transition-colors">arrow_forward</span>
+                    </button>
+                    <button
+                        class="group relative flex items-center justify-between p-5 w-full glass-panel rounded-xl text-left transition-all hover:bg-white/5 hover:translate-x-2">
+                        <div class="flex items-center gap-4">
+                            <div
+                                class="p-2 rounded-lg bg-white/5 text-gray-300 group-hover:bg-primary group-hover:text-white transition-colors">
+                                <span class="material-symbols-outlined">trophy</span>
+                            </div>
+                            <div>
+                                <h3 class="font-display font-bold text-lg text-white">Leaderboards</h3>
+                                <p class="text-xs text-gray-400">Global Rankings</p>
+                            </div>
+                        </div>
+                        <span
+                            class="material-symbols-outlined text-gray-500 group-hover:text-white transition-colors">arrow_forward</span>
+                    </button>
+                </nav>
+            </div>
+            <!-- Right Column: AI Challenge Module -->
+            <div class="lg:col-span-7 w-full flex justify-center lg:justify-end">
+                <div
+                    class="w-full max-w-[600px] bg-[#121417]/80 backdrop-blur-xl border border-glass-border rounded-2xl p-8 shadow-2xl relative overflow-hidden">
+                    <!-- Decorative background element -->
+                    <div
+                        class="absolute top-0 right-0 w-64 h-64 bg-primary/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none">
+                    </div>
+                    <div class="flex items-center justify-between mb-8 relative z-10">
+                        <div>
+                            <h2 class="font-display text-3xl font-bold text-white">CHALLENGE AI</h2>
+                            <p class="text-gray-400 text-sm mt-1">Configure neural network difficulty</p>
+                        </div>
+                        <div
+                            class="bg-primary/20 text-primary px-3 py-1 rounded text-xs font-bold uppercase tracking-wider border border-primary/30">
+                            Single Player
+                        </div>
+                    </div>
+                    <!-- Difficulty Grid -->
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+                        <!-- Easy Card -->
+                        <div
+                            class="difficulty-card group cursor-pointer relative flex flex-col items-center justify-center gap-3 p-5 rounded-xl border border-glass-border bg-[#1d2126] hover:bg-[#252a30] transition-all">
+                            <div
+                                class="size-12 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 mb-1 group-hover:scale-110 transition-transform">
+                                <span class="material-symbols-outlined">sentiment_satisfied</span>
+                            </div>
+                            <div class="text-center">
+                                <h3 class="text-white font-bold text-lg">Novice</h3>
+                                <p class="text-gray-500 text-xs mt-1">Depth: 4 Moves</p>
+                            </div>
+                            <div
+                                class="absolute inset-0 border-2 border-emerald-500/0 rounded-xl group-hover:border-emerald-500/50 transition-colors pointer-events-none">
+                            </div>
+                        </div>
+                        <!-- Medium Card (Active) -->
+                        <div
+                            class="difficulty-card active group cursor-pointer relative flex flex-col items-center justify-center gap-3 p-5 rounded-xl border border-primary bg-[#1d2126] transition-all">
+                            <div class="absolute top-3 right-3 text-primary">
+                                <span class="material-symbols-outlined text-[16px]">check_circle</span>
+                            </div>
+                            <div
+                                class="size-12 rounded-full bg-primary/20 flex items-center justify-center text-primary mb-1 group-hover:scale-110 transition-transform">
+                                <span class="material-symbols-outlined">psychology</span>
+                            </div>
+                            <div class="text-center">
+                                <h3 class="text-white font-bold text-lg">Advanced</h3>
+                                <p class="text-gray-400 text-xs mt-1">Depth: 12 Moves</p>
+                            </div>
+                        </div>
+                        <!-- Hard Card -->
+                        <div
+                            class="difficulty-card group cursor-pointer relative flex flex-col items-center justify-center gap-3 p-5 rounded-xl border border-glass-border bg-[#1d2126] hover:bg-[#252a30] transition-all">
+                            <div
+                                class="size-12 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-500 mb-1 group-hover:scale-110 transition-transform">
+                                <span class="material-symbols-outlined">smart_toy</span>
+                            </div>
+                            <div class="text-center">
+                                <h3 class="text-white font-bold text-lg">Grandmaster</h3>
+                                <p class="text-gray-500 text-xs mt-1">Depth: 30 Moves</p>
+                            </div>
+                            <div
+                                class="absolute inset-0 border-2 border-amber-500/0 rounded-xl group-hover:border-amber-500/50 transition-colors pointer-events-none">
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Game Settings -->
+                    <div class="space-y-4 mb-8">
+                        <div
+                            class="flex items-center justify-between p-3 rounded-lg bg-[#0a0a0a]/50 border border-glass-border">
+                            <div class="flex items-center gap-3">
+                                <span class="material-symbols-outlined text-gray-400">timer</span>
+                                <span class="text-sm text-gray-300">Turn Timer</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <button
+                                    class="size-6 rounded bg-[#2a3137] text-white flex items-center justify-center hover:bg-primary transition-colors">-</button>
+                                <span class="text-sm font-mono w-12 text-center">5:00</span>
+                                <button
+                                    class="size-6 rounded bg-[#2a3137] text-white flex items-center justify-center hover:bg-primary transition-colors">+</button>
+                            </div>
+                        </div>
+                        <div
+                            class="flex items-center justify-between p-3 rounded-lg bg-[#0a0a0a]/50 border border-glass-border">
+                            <div class="flex items-center gap-3">
+                                <span class="material-symbols-outlined text-gray-400">palette</span>
+                                <span class="text-sm text-gray-300">Side Selection</span>
+                            </div>
+                            <div class="flex gap-1 bg-[#2a3137] p-1 rounded-md">
+                                <button class="px-3 py-1 rounded text-xs text-white bg-primary shadow-sm">White</button>
+                                <button class="px-3 py-1 rounded text-xs text-gray-400 hover:text-white">Random</button>
+                                <button class="px-3 py-1 rounded text-xs text-gray-400 hover:text-white">Black</button>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Start Button -->
+                    <button
+                        class="w-full py-4 bg-primary hover:bg-primary-dark text-white font-display font-bold text-lg tracking-wide rounded-lg shadow-lg shadow-primary/25 transition-all transform hover:scale-[1.02] flex items-center justify-center gap-2">
+                        <span>INITIALIZE MATCH</span>
+                        <span class="material-symbols-outlined">play_arrow</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </main>
+    <!-- Footer -->
+    <footer class="w-full border-t border-glass-border bg-[#0a0a0a]/80 py-6 mt-auto relative z-10 backdrop-blur-sm">
+        <div
+            class="max-w-[1440px] mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-gray-500">
+            <div class="flex gap-6">
+                <a class="hover:text-white transition-colors" href="#">About Engine</a>
+                <a class="hover:text-white transition-colors" href="#">Game Rules</a>
+                <a class="hover:text-white transition-colors" href="#">Settings</a>
+            </div>
+            <p>© 2024 Checkers AI Project. Powered by DeepBlue Tensor Core.</p>
+        </div>
+    </footer>
+</body>
+
+</html>

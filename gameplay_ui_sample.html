@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Checkers Elite - Realistic Gameplay</title>
+    <!-- Fonts -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;family=Space+Grotesk:wght@400;500;600;700&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <!-- Theme Configuration -->
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#1c5b97",
+                        "primary-glow": "#3b82f6",
+                        "accent-green": "#00B894",
+                        "accent-amber": "#FFBE0B",
+                        "background-light": "#f5f5f5",
+                        "background-dark": "#0a0a0a",
+                        "surface-dark": "#121417",
+                        "glass-dark": "rgba(20, 20, 20, 0.65)",
+                        "glass-border": "rgba(255, 255, 255, 0.08)",
+                    },
+                    fontFamily: {
+                        "display": ["Manrope", "sans-serif"],
+                        "tech": ["Space Grotesk", "monospace"],
+                    },
+                    borderRadius: { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "2xl": "1rem", "full": "9999px" },
+                    boxShadow: {
+                        'glass': '0 8px 32px 0 rgba(0, 0, 0, 0.37)',
+                        'board': '0 50px 70px -12px rgba(0, 0, 0, 0.7)',
+                        'piece': '0 4px 6px -1px rgba(0, 0, 0, 0.6), inset 0 2px 4px rgba(255,255,255,0.3)',
+                        'piece-hover': '0 8px 12px -1px rgba(0, 0, 0, 0.7), inset 0 2px 4px rgba(255,255,255,0.4)',
+                    }
+                },
+            },
+        }
+    </script>
+    <style>
+        /* Wood Textures & Realistic Materials */
+        .wood-texture-dark {
+            background-color: #4a3728;
+            background-image:
+                repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.06) 0px, rgba(0, 0, 0, 0.06) 2px, transparent 2px, transparent 4px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.2), transparent);
+        }
+
+        .wood-texture-light {
+            background-color: #e3c699;
+            background-image:
+                repeating-linear-gradient(45deg, rgba(139, 69, 19, 0.04) 0px, rgba(139, 69, 19, 0.04) 2px, transparent 2px, transparent 4px),
+                linear-gradient(to bottom, rgba(255, 255, 255, 0.1), transparent);
+        }
+
+        .board-frame {
+            background: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.05'/%3E%3C/svg%3E"),
+                linear-gradient(145deg, #2e2016, #0f0a07);
+            box-shadow:
+                inset 0 0 20px rgba(0, 0, 0, 0.9),
+                0 30px 60px -10px rgba(0, 0, 0, 0.8);
+        }
+
+        /* Checkers Pieces */
+        .piece {
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .piece-red {
+            background: radial-gradient(circle at 35% 30%, #e53935, #8b0000 80%);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.6), inset 0 2px 8px rgba(255, 255, 255, 0.25);
+        }
+
+        .piece-white {
+            background: radial-gradient(circle at 35% 30%, #ffffff, #cfd8dc 60%, #90a4ae 100%);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.6), inset 0 2px 8px rgba(255, 255, 255, 0.7);
+        }
+
+        .piece-king::after {
+            content: "crown";
+            font-family: 'Material Symbols Outlined';
+            font-size: 24px;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: rgba(0, 0, 0, 0.3);
+            font-weight: 700;
+        }
+
+        /* 3D Depth Effect */
+        .perspective-board {
+            transform: perspective(1000px) rotateX(10deg);
+            transform-style: preserve-3d;
+        }
+
+        /* Glass Scrollbar */
+        .glass-scroll::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        .glass-scroll::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .glass-scroll::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 10px;
+        }
+
+        .glass-scroll::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.25);
+        }
+
+        /* Spotlight Background */
+        .ambient-spotlight {
+            background: radial-gradient(circle at 50% 40%, rgba(60, 60, 70, 0.15) 0%, rgba(10, 10, 10, 0) 60%);
+        }
+    </style>
+</head>
+
+<body
+    class="bg-background-light dark:bg-background-dark text-white font-display overflow-hidden selection:bg-primary selection:text-white">
+    <div class="relative flex h-screen w-full flex-col overflow-hidden">
+        <!-- Ambient Background Lighting -->
+        <div class="absolute inset-0 pointer-events-none ambient-spotlight z-0"></div>
+        <!-- Top Header: Status & Timers -->
+        <header
+            class="relative z-20 flex items-center justify-between px-8 py-4 bg-gradient-to-b from-[#0a0a0a] to-transparent">
+            <!-- Left: Player -->
+            <div class="flex items-center gap-4">
+                <div class="relative">
+                    <div class="h-14 w-14 rounded-full bg-cover bg-center border-2 border-accent-green shadow-[0_0_15px_rgba(0,184,148,0.3)]"
+                        data-alt="User Avatar showing a determined human face"
+                        style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuDajnL1xE-J2obMo_hdsIlkQx15FLd76iTxiLmDiak_bhkcZoMF73kbyXimrFoN6bH6a5uaxOV3jsvfJ_m3-Evhwef7yxyCIsl1hJrw_fCpU0RyHwFC6Eqji7IPhb-24e25-deZPT1678xAzUa37GjA9ady8DhqI0VKSgQ58i5NNZrWPp92_GwwamIUASF_O1fR88b0VxnYmmLjRL9RmgnraZjr0Yr0LGEWVvy8swBepSw7oAe20TAYM6FYuBD4WRvmB9HH3sriRPTy");'>
+                    </div>
+                    <div
+                        class="absolute -bottom-1 -right-1 bg-accent-green text-black text-[10px] font-bold px-1.5 py-0.5 rounded-full font-tech">
+                        YOU</div>
+                </div>
+                <div class="flex flex-col">
+                    <h2 class="text-white text-lg font-bold leading-tight tracking-tight">Player One</h2>
+                    <div class="flex items-center gap-2">
+                        <span class="material-symbols-outlined text-accent-green text-sm">circle</span>
+                        <span class="text-gray-400 text-sm font-medium">Your Turn</span>
+                    </div>
+                </div>
+                <!-- Timer -->
+                <div
+                    class="ml-6 flex items-center gap-1 bg-surface-dark/50 border border-white/5 rounded-lg px-3 py-1.5 backdrop-blur-sm">
+                    <span class="material-symbols-outlined text-gray-400 text-lg">timer</span>
+                    <span class="text-xl font-bold font-tech text-white tracking-widest">09:42</span>
+                </div>
+            </div>
+            <!-- Center: Game Title / Status -->
+            <div class="hidden lg:flex flex-col items-center opacity-80">
+                <div
+                    class="flex items-center gap-2 text-primary tracking-[0.2em] text-xs font-bold uppercase font-tech mb-1">
+                    Ranked Match
+                </div>
+                <div class="h-1 w-16 bg-gradient-to-r from-transparent via-primary to-transparent rounded-full"></div>
+            </div>
+            <!-- Right: AI Opponent -->
+            <div class="flex items-center gap-4 text-right">
+                <!-- Timer -->
+                <div
+                    class="mr-6 flex items-center gap-1 bg-surface-dark/50 border border-white/5 rounded-lg px-3 py-1.5 backdrop-blur-sm">
+                    <span class="text-xl font-bold font-tech text-gray-400 tracking-widest">09:58</span>
+                    <span class="material-symbols-outlined text-gray-500 text-lg">timer</span>
+                </div>
+                <div class="flex flex-col items-end">
+                    <h2 class="text-white text-lg font-bold leading-tight tracking-tight">AlphaZero</h2>
+                    <div class="flex items-center gap-2 justify-end">
+                        <span class="text-gray-500 text-sm font-medium">Waiting...</span>
+                        <div class="h-2 w-2 rounded-full bg-gray-700"></div>
+                    </div>
+                </div>
+                <div class="relative">
+                    <div class="h-14 w-14 rounded-full bg-cover bg-center border-2 border-gray-700 grayscale opacity-80"
+                        data-alt="AI Avatar representing a digital neural network"
+                        style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuCPOVvqvc7P4A5jMKtRrNkOAvlk6fIEnvufG8sw8E9gmkcvBe7HgXNsUdt7p368v0xsgCJJk7eVwfdV-3ahW_xvN-bQe0K6_sOBZ4rHtEj56UG0HmMXTLcaNjgSaP1LeT0C6dvVMwIaetjfxgks9EaX414pCkmSOBT4Wrutm4vv3_jnSA1106Qt93eJc9JKh7dPNs12ap_gCl7Ng3loutqY4xMaJBGLbX4kTB3jApL0DOYBDUqTJi-82VQOUDq1vrD-N97bow88aenu");'>
+                    </div>
+                    <div
+                        class="absolute -bottom-1 -left-1 bg-gray-700 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full font-tech">
+                        BOT</div>
+                </div>
+            </div>
+        </header>
+        <!-- Main Content Layout -->
+        <main class="flex-1 relative z-10 flex overflow-hidden">
+            <!-- Left/Center: The Board -->
+            <div class="flex-1 flex flex-col items-center justify-center p-8 relative">
+                <!-- Feedback Overlay -->
+                <div class="absolute top-10 pointer-events-none opacity-0 transition-opacity duration-300">
+                    <span
+                        class="px-4 py-2 bg-primary/20 border border-primary/40 text-primary-glow rounded-full text-sm font-tech tracking-widest uppercase backdrop-blur-sm">
+                        Opponent Thinking
+                    </span>
+                </div>
+                <!-- 3D Board Container -->
+                <div
+                    class="relative board-frame p-4 rounded-xl shadow-board perspective-board transition-transform duration-700 ease-out hover:scale-[1.01]">
+                    <!-- Coordinates - Top -->
+                    <div
+                        class="flex justify-between px-6 pb-2 text-[#8d7b68] font-tech text-xs font-bold opacity-60 select-none">
+                        <span>A</span><span>B</span><span>C</span><span>D</span><span>E</span><span>F</span><span>G</span><span>H</span>
+                    </div>
+                    <div class="flex">
+                        <!-- Coordinates - Left -->
+                        <div
+                            class="flex flex-col justify-between py-6 pr-2 text-[#8d7b68] font-tech text-xs font-bold opacity-60 select-none">
+                            <span>8</span><span>7</span><span>6</span><span>5</span><span>4</span><span>3</span><span>2</span><span>1</span>
+                        </div>
+                        <!-- The Grid (8x8) -->
+                        <div
+                            class="grid grid-cols-8 grid-rows-8 w-[60vh] h-[60vh] max-w-[600px] max-h-[600px] border-4 border-[#3d2b1f] rounded-lg overflow-hidden shadow-inner bg-[#2e2016]">
+                            <!-- Row 8 -->
+                            <div class="wood-texture-light flex items-center justify-center relative"></div>
+                            <div class="wood-texture-dark flex items-center justify-center relative">
+                                <div class="piece piece-white h-[75%] w-[75%] rounded-full cursor-pointer hover:scale-105"
+                                    data-alt="White checker piece"></div>
+                            </div>
+                            <div class="wood-texture-light flex items-center justify-center relative"></div>
+                            <div class="wood-texture-dark flex items-center justify-center relative">
+                                <div class="piece piece-white h-[75%] w-[75%] rounded-full cursor-pointer hover:scale-105"
+                                    data-alt="White checker piece"></div>
+                            </div>
+                            <div class="wood-texture-light flex items-center justify-center relative"></div>
+                            <div class="wood-texture-dark flex items-center justify-center relative">
+                                <div class="piece piece-white h-[75%] w-[75%] rounded-full cursor-pointer hover:scale-105"
+                                    data-alt="White checker piece"></div>
+                            </div>
+                            <div class="wood-texture-light flex items-center justify-center relative"></div>
+                            <div class="wood-texture-dark flex items-center justify-center relative">
+                                <div class="piece piece-white h-[75%] w-[75%] rounded-full cursor-pointer hover:scale-105"
+                                    data-alt="White checker piece"></div>
+                            </div>
+                            <!-- Row 7 -->
+                            <div class="wood-texture-dark flex items-center justify-center relative">
+                                <div class="piece piece-white h-[75%] w-[75%] rounded-full cursor-pointer hover:scale-105"
+                                    data-alt="White checker piece"></div>
+                            </div>
+                            <div class="wood-texture-light flex items-center justify-center relative"></div>
+                            <div class="wood-texture-dark flex items-center justify-center relative">
+                                <div class="piece piece-white h-[75%] w-[75%] rounded-full cursor-pointer hover:scale-105"
+                                    data-alt="White checker piece"></div>
+                            </div>
+                            <div class="wood-texture-light flex items-center justify-center relative"></div>
+                            <div class="wood-texture-dark flex items-center justify-center relative">
+                                <div class="piece piece-white h-[75%] w-[75%] rounded-full cursor-pointer hover:scale-105"
+                                    data-alt="White checker piece"></div>
+                            </div>
+                            <div class="wood-texture-light flex items-center justify-center relative"></div>
+                            <div class="wood-texture-dark flex items-center justify-center relative">
+                                <div class="piece piece-white h-[75%] w-[75%] rounded-full cursor-pointer hover:scale-105"
+                                    data-alt="White checker piece"></div>
+                            </div>
+                            <div class="wood-texture-light flex items-center justify-center relative"></div>
+                            <!-- Row 6 -->
+                            <div class="wood-texture-light flex items-center justify-center relative"></div>
+                            <div class="wood-texture-dark flex items-center justify-center relative">
+                                <div class="piece piece-white h-[75%] w-[75%] rounded-full cursor-pointer hover:scale-105"
+                                    data-alt="White checker piece"></div>
+                            </div>
+                            <div class="wood-texture-light flex items-center justify-center relative"></div>
+                            <div class="wood-texture-dark flex items-center justify-center relative">
+                                <!-- Empty square where a piece moved from -->
+                            </div>
+                            <div class="wood-texture-light flex items-center justify-center relative"></div>
+                            <div class="wood-texture-dark flex items-center justify-center relative">
+                                <div class="piece piece-white h-[75%] w-[75%] rounded-full cursor-pointer hover:scale-105"
+                                    data-alt="White checker piece"></div>
+                            </div>
+                            <div class="wood-texture-light flex items-center justify-center relative"></div>
+                            <div class="wood-texture-dark flex items-center justify-center relative">
+                                <div class="piece piece-white h-[75%] w-[75%] rounded-full cursor-pointer hover:scale-105"
+                                    data-alt="White checker piece"></div>
+                            </div>
+                            <!-- Row 5 -->
+                            <div class="wood-texture-dark flex items-center justify-center relative"></div>
+                            <div class="wood-texture-light flex items-center justify-center relative"></div>
+                            <div class="wood-texture-dark flex items-center justify-center relative">
+                                <!-- Potential Move Hint -->
+                                <div
+                                    class="h-3 w-3 rounded-full bg-accent-green/60 animate-pulse box-content border-2 border-accent-green/20">
+                                </div>
+                            </div>
+                            <div class="wood-texture-light flex items-center justify-center relative"></div>
+                            <div class="wood-texture-dark flex items-center justify-center relative">
+                                <div class="piece piece-white h-[75%] w-[75%] rounded-full cursor-pointer hover:scale-105"
+                                    data-alt="White checker piece"></div>
+                            </div>
+                            <div class="wood-texture-light flex items-center justify-center relative"></div>
+                            <div class="wood-texture-dark flex items-center justify-center relative"></div>
+                            <div class="wood-texture-light flex items-center justify-center relative"></div>
+                            <!-- Row 4 -->
+                            <div class="wood-texture-light flex items-center justify-center relative"></div>
+                            <div class="wood-texture-dark flex items-center justify-center relative">
+                                <div class="piece piece-red h-[75%] w-[75%] rounded-full cursor-pointer hover:scale-105 shadow-[0_0_15px_2px_rgba(28,91,151,0.5)] ring-2 ring-primary ring-offset-2 ring-offset-[#4a3728]"
+                                    data-alt="Red checker piece selected"></div>
+                            </div>
+                            <div class="wood-texture-light flex items-center justify-center relative"></div>
+                            <div class="wood-texture-dark flex items-center justify-center relative"></div>
+                            <div class="wood-texture-light flex items-center justify-center relative"></div>
+                            <div class="wood-texture-dark flex items-center justify-center relative"></div>
+                            <div class="wood-texture-light flex items-center justify-center relative"></div>
+                            <div class="wood-texture-dark flex items-center justify-center relative"></div>
+                            <!-- Row 3 -->
+                            <div class="wood-texture-dark flex items-center justify-center relative">
+                                <div class="piece piece-red h-[75%] w-[75%] rounded-full cursor-pointer hover:scale-105"
+                                    data-alt="Red checker piece"></div>
+                            </div>
+                            <div class="wood-texture-light flex items-center justify-center relative"></div>
+                            <div class="wood-texture-dark flex items-center justify-center relative">
+                                <!-- Hint dot -->
+                                <div
+                                    class="h-3 w-3 rounded-full bg-accent-green/60 animate-pulse box-content border-2 border-accent-green/20">
+                                </div>
+                            </div>
+                            <div class="wood-texture-light flex items-center justify-center relative"></div>
+                            <div class="wood-texture-dark flex items-center justify-center relative">
+                                <div class="piece piece-red h-[75%] w-[75%] rounded-full cursor-pointer hover:scale-105"
+                                    data-alt="Red checker piece"></div>
+                            </div>
+                            <div class="wood-texture-light flex items-center justify-center relative"></div>
+                            <div class="wood-texture-dark flex items-center justify-center relative">
+                                <div class="piece piece-red h-[75%] w-[75%] rounded-full cursor-pointer hover:scale-105"
+                                    data-alt="Red checker piece"></div>
+                            </div>
+                            <div class="wood-texture-light flex items-center justify-center relative"></div>
+                            <!-- Row 2 -->
+                            <div class="wood-texture-light flex items-center justify-center relative"></div>
+                            <div class="wood-texture-dark flex items-center justify-center relative">
+                                <div class="piece piece-red h-[75%] w-[75%] rounded-full cursor-pointer hover:scale-105"
+                                    data-alt="Red checker piece"></div>
+                            </div>
+                            <div class="wood-texture-light flex items-center justify-center relative"></div>
+                            <div class="wood-texture-dark flex items-center justify-center relative">
+                                <div class="piece piece-red h-[75%] w-[75%] rounded-full cursor-pointer hover:scale-105"
+                                    data-alt="Red checker piece"></div>
+                            </div>
+                            <div class="wood-texture-light flex items-center justify-center relative"></div>
+                            <div class="wood-texture-dark flex items-center justify-center relative">
+                                <div class="piece piece-red h-[75%] w-[75%] rounded-full cursor-pointer hover:scale-105"
+                                    data-alt="Red checker piece"></div>
+                            </div>
+                            <div class="wood-texture-light flex items-center justify-center relative"></div>
+                            <div class="wood-texture-dark flex items-center justify-center relative">
+                                <div class="piece piece-red h-[75%] w-[75%] rounded-full cursor-pointer hover:scale-105"
+                                    data-alt="Red checker piece"></div>
+                            </div>
+                            <!-- Row 1 -->
+                            <div class="wood-texture-dark flex items-center justify-center relative">
+                                <div class="piece piece-red h-[75%] w-[75%] rounded-full cursor-pointer hover:scale-105"
+                                    data-alt="Red checker piece"></div>
+                            </div>
+                            <div class="wood-texture-light flex items-center justify-center relative"></div>
+                            <div class="wood-texture-dark flex items-center justify-center relative">
+                                <div class="piece piece-red h-[75%] w-[75%] rounded-full cursor-pointer hover:scale-105"
+                                    data-alt="Red checker piece"></div>
+                            </div>
+                            <div class="wood-texture-light flex items-center justify-center relative"></div>
+                            <div class="wood-texture-dark flex items-center justify-center relative">
+                                <div class="piece piece-red h-[75%] w-[75%] rounded-full cursor-pointer hover:scale-105"
+                                    data-alt="Red checker piece"></div>
+                            </div>
+                            <div class="wood-texture-light flex items-center justify-center relative"></div>
+                            <div class="wood-texture-dark flex items-center justify-center relative">
+                                <div class="piece piece-red h-[75%] w-[75%] rounded-full cursor-pointer hover:scale-105"
+                                    data-alt="Red checker piece"></div>
+                            </div>
+                            <div class="wood-texture-light flex items-center justify-center relative"></div>
+                        </div>
+                        <!-- Coordinates - Right -->
+                        <div
+                            class="flex flex-col justify-between py-6 pl-2 text-[#8d7b68] font-tech text-xs font-bold opacity-60 select-none">
+                            <span>8</span><span>7</span><span>6</span><span>5</span><span>4</span><span>3</span><span>2</span><span>1</span>
+                        </div>
+                    </div>
+                    <!-- Coordinates - Bottom -->
+                    <div
+                        class="flex justify-between px-6 pt-2 text-[#8d7b68] font-tech text-xs font-bold opacity-60 select-none">
+                        <span>A</span><span>B</span><span>C</span><span>D</span><span>E</span><span>F</span><span>G</span><span>H</span>
+                    </div>
+                </div>
+                <!-- Floating Bottom Controls -->
+                <div class="absolute bottom-10 z-30">
+                    <div
+                        class="flex items-center gap-1 p-1.5 rounded-full bg-surface-dark/80 backdrop-blur-md border border-white/10 shadow-glass">
+                        <button
+                            class="flex items-center gap-2 px-6 py-2.5 rounded-full text-white hover:bg-white/10 transition-colors group">
+                            <span
+                                class="material-symbols-outlined text-gray-400 group-hover:text-white transition-colors">undo</span>
+                            <span class="text-sm font-bold tracking-wide">Undo</span>
+                        </button>
+                        <div class="h-6 w-px bg-white/10 mx-1"></div>
+                        <button
+                            class="flex items-center gap-2 px-6 py-2.5 rounded-full text-white hover:bg-white/10 transition-colors group relative">
+                            <span
+                                class="material-symbols-outlined text-accent-amber group-hover:text-amber-200 transition-colors animate-pulse">lightbulb</span>
+                            <span class="text-sm font-bold tracking-wide">Hint</span>
+                            <!-- Tooltip/Count -->
+                            <span class="absolute top-1 right-2 h-2 w-2 rounded-full bg-accent-amber"></span>
+                        </button>
+                        <div class="h-6 w-px bg-white/10 mx-1"></div>
+                        <button
+                            class="flex items-center gap-2 px-6 py-2.5 rounded-full text-white hover:bg-white/10 transition-colors group hover:text-red-400">
+                            <span
+                                class="material-symbols-outlined text-gray-400 group-hover:text-red-400 transition-colors">flag</span>
+                            <span class="text-sm font-bold tracking-wide">Forfeit</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <!-- Right Sidebar: Move History (Glass Panel) -->
+            <aside
+                class="hidden lg:flex w-80 h-full flex-col border-l border-white/5 bg-glass-dark backdrop-blur-xl relative z-20 shadow-2xl">
+                <div class="p-6 border-b border-white/5 flex items-center justify-between">
+                    <h3 class="text-lg font-bold font-tech text-white uppercase tracking-wider flex items-center gap-2">
+                        <span class="material-symbols-outlined text-primary text-xl">history</span> Match Log
+                    </h3>
+                    <button class="text-gray-400 hover:text-white transition-colors">
+                        <span class="material-symbols-outlined">more_horiz</span>
+                    </button>
+                </div>
+                <!-- Moves List -->
+                <div class="flex-1 overflow-y-auto glass-scroll p-2 space-y-1">
+                    <!-- Move Item (Completed) -->
+                    <div
+                        class="flex items-center justify-between p-3 rounded-lg hover:bg-white/5 transition-colors group">
+                        <div class="flex items-center gap-3">
+                            <span class="text-gray-500 font-mono text-sm w-4">1.</span>
+                            <div class="flex items-center gap-2">
+                                <div class="h-3 w-3 rounded-full bg-red-500"></div>
+                                <span class="text-sm font-medium text-gray-300">C3</span>
+                                <span class="material-symbols-outlined text-xs text-gray-600">arrow_right_alt</span>
+                                <span class="text-sm font-medium text-gray-300">D4</span>
+                            </div>
+                        </div>
+                        <span class="text-xs text-gray-600 font-mono">09:55</span>
+                    </div>
+                    <!-- Move Item (Completed) -->
+                    <div
+                        class="flex items-center justify-between p-3 rounded-lg hover:bg-white/5 transition-colors group">
+                        <div class="flex items-center gap-3">
+                            <span class="text-gray-500 font-mono text-sm w-4">2.</span>
+                            <div class="flex items-center gap-2">
+                                <div class="h-3 w-3 rounded-full bg-white"></div>
+                                <span class="text-sm font-medium text-gray-300">F6</span>
+                                <span class="material-symbols-outlined text-xs text-gray-600">arrow_right_alt</span>
+                                <span class="text-sm font-medium text-gray-300">E5</span>
+                            </div>
+                        </div>
+                        <span class="text-xs text-gray-600 font-mono">09:50</span>
+                    </div>
+                    <!-- Move Item (Completed) -->
+                    <div
+                        class="flex items-center justify-between p-3 rounded-lg hover:bg-white/5 transition-colors group">
+                        <div class="flex items-center gap-3">
+                            <span class="text-gray-500 font-mono text-sm w-4">3.</span>
+                            <div class="flex items-center gap-2">
+                                <div class="h-3 w-3 rounded-full bg-red-500"></div>
+                                <span class="text-sm font-medium text-gray-300">D4</span>
+                                <span class="material-symbols-outlined text-xs text-gray-600">arrow_right_alt</span>
+                                <span class="text-sm font-medium text-gray-300">E5</span>
+                            </div>
+                        </div>
+                        <div
+                            class="px-1.5 py-0.5 rounded bg-gray-800 border border-gray-700 text-[10px] text-gray-400 font-bold uppercase">
+                            Take</div>
+                    </div>
+                    <!-- Current Active Move Placeholder -->
+                    <div
+                        class="flex items-center justify-between p-3 rounded-lg bg-primary/10 border border-primary/20 mt-2">
+                        <div class="flex items-center gap-3">
+                            <span class="text-primary font-mono text-sm w-4">4.</span>
+                            <div class="flex items-center gap-2">
+                                <div class="h-3 w-3 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.5)]"></div>
+                                <span class="text-sm font-bold text-white">Thinking...</span>
+                            </div>
+                        </div>
+                        <div class="animate-spin h-3 w-3 border-2 border-primary border-t-transparent rounded-full">
+                        </div>
+                    </div>
+                </div>
+                <!-- Footer: Captured Pieces -->
+                <div class="p-6 border-t border-white/5 bg-black/20">
+                    <p class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4 font-tech">Captured</p>
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-xs text-gray-400">By You</span>
+                        <div class="flex -space-x-2">
+                            <div class="h-6 w-6 rounded-full piece-white border border-black/50 shadow-sm"
+                                data-alt="Captured white piece"></div>
+                            <div class="h-6 w-6 rounded-full piece-white border border-black/50 shadow-sm"
+                                data-alt="Captured white piece"></div>
+                        </div>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs text-gray-400">By AI</span>
+                        <div class="flex -space-x-2">
+                            <div class="h-6 w-6 rounded-full piece-red border border-black/50 shadow-sm"
+                                data-alt="Captured red piece"></div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </main>
+    </div>
+</body>
+
+</html>
