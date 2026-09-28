@@ -1,4 +1,5 @@
 import { Game, moveToNotation } from '../engine';
+import type { Color } from '../engine';
 import type { Level } from './levels';
 import { LEVEL_OPTIONS, acceptsDraw } from './levels';
 import type { Searcher } from './search';
@@ -19,6 +20,8 @@ export type AiRequest =
       readonly fen: string;
       readonly moves: readonly string[];
       readonly level: Level;
+      /** The side the AI plays; the offer is judged from its point of view. */
+      readonly ai: Color;
     }
   | { readonly id: number; readonly type: 'new-game' };
 
@@ -71,7 +74,9 @@ export function handleRequest(searcher: Searcher, request: AiRequest): AiRespons
         const game = replay(request.fen, request.moves);
         // Judge the offer with the strongest settings the level allows, without randomness.
         const result = searcher.search(game, { ...LEVEL_OPTIONS[request.level], randomMargin: 0 });
-        return { id, type: 'draw-offer', accepted: acceptsDraw(result.score) };
+        // The score is for the side to move; the offer may come on either side's turn.
+        const score = game.turn === request.ai ? result.score : -result.score;
+        return { id, type: 'draw-offer', accepted: acceptsDraw(score) };
       }
     }
   } catch (error) {

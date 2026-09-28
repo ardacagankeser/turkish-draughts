@@ -26,10 +26,13 @@ describe('handleRequest', () => {
   });
 
   it('accepts a draw when losing and refuses when winning', () => {
-    const offer = (fen: string) =>
-      handleRequest(searcher, { id: 2, type: 'draw-offer', fen, moves: [], level: 'hard' });
-    expect(offer('B:WKa1,Kh1:Bd5')).toEqual({ id: 2, type: 'draw-offer', accepted: true });
-    expect(offer('W:WKa1,Kh1:Bd5')).toEqual({ id: 2, type: 'draw-offer', accepted: false });
+    const offer = (fen: string, ai: 1 | -1) =>
+      handleRequest(searcher, { id: 2, type: 'draw-offer', fen, moves: [], level: 'hard', ai });
+    // White (two kings) wins against the lone man, whoever is to move.
+    for (const fen of ['W:WKa1,Kh1:Bd5', 'B:WKa1,Kh1:Bd4']) {
+      expect(offer(fen, -1)).toEqual({ id: 2, type: 'draw-offer', accepted: true });
+      expect(offer(fen, 1)).toEqual({ id: 2, type: 'draw-offer', accepted: false });
+    }
   });
 
   it('reports illegal input as an error instead of throwing', () => {
@@ -74,7 +77,7 @@ describe('AiClient', () => {
     const client = new AiClient(() => new FakeWorker());
     const response = await client.chooseMove(INITIAL_FEN, [], 'beginner');
     expect(new Game().legalMoves.map(moveToNotation)).toContain(response.move);
-    await expect(client.offerDraw('B:WKa1,Kh1:Bd5', [], 'easy')).resolves.toBe(true);
+    await expect(client.offerDraw('B:WKa1,Kh1:Bd5', [], 'easy', -1)).resolves.toBe(true);
     await expect(client.newGame()).resolves.toBeUndefined();
     client.dispose();
   });

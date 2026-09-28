@@ -21,7 +21,7 @@ Play **Turkish Draughts (Dama)** in the browser against a computer opponent buil
 | 0     | Repository cleanup, GitHub Flow, contribution templates                      | ✅     |
 | 1     | Rules engine in TypeScript with full rule & perft test suite                 | ✅     |
 | 2     | AI: negamax + alpha-beta, iterative deepening, TT, quiescence, benchmarks    | ✅     |
-| 3     | Web UI: React + Vite, animations, move hints, undo, i18n (TR/EN), mobile     | ⏳     |
+| 3     | Web UI: React + Vite, animations, move hints, undo, i18n (TR/EN), mobile     | ✅     |
 | 4     | CI/CD: checks on every PR, preview deploys, GitHub Pages, automated releases | ⏳     |
 | 5     | Docs: architecture overview, AI write-up, demo GIF                           | ⏳     |
 
