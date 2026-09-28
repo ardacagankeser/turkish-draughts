@@ -15,14 +15,27 @@ Play **Turkish Draughts (Dama)** in the browser against a computer opponent buil
 
 ## Roadmap
 
-| Phase | Scope | Status |
-|-------|-------|--------|
-| 0 | Repository cleanup, GitHub Flow, contribution templates | 🚧 |
-| 1 | Rules engine in TypeScript with full rule & perft test suite | ⏳ |
-| 2 | AI: negamax + alpha-beta, iterative deepening, TT, quiescence, benchmarks | ⏳ |
-| 3 | Web UI: React + Vite, animations, move hints, undo, i18n (TR/EN), mobile | ⏳ |
-| 4 | CI/CD: checks on every PR, preview deploys, GitHub Pages, automated releases | ⏳ |
-| 5 | Docs: architecture overview, AI write-up, demo GIF | ⏳ |
+| Phase | Scope                                                                        | Status |
+| ----- | ---------------------------------------------------------------------------- | ------ |
+| 0     | Repository cleanup, GitHub Flow, contribution templates                      | ✅     |
+| 1     | Rules engine in TypeScript with full rule & perft test suite                 | 🚧     |
+| 2     | AI: negamax + alpha-beta, iterative deepening, TT, quiescence, benchmarks    | ⏳     |
+| 3     | Web UI: React + Vite, animations, move hints, undo, i18n (TR/EN), mobile     | ⏳     |
+| 4     | CI/CD: checks on every PR, preview deploys, GitHub Pages, automated releases | ⏳     |
+| 5     | Docs: architecture overview, AI write-up, demo GIF                           | ⏳     |
+
+## Development
+
+Requires Node.js 24 (see `.nvmrc`).
+
+```bash
+npm install
+npm run dev        # start the dev server
+npm test           # run the test suite
+npm run lint       # ESLint
+npm run typecheck  # TypeScript
+npm run build      # production build into dist/
+```
 
 ## Contributing
 
