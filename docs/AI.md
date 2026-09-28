@@ -23,6 +23,47 @@ so the board stays responsive while it thinks.
 - **Draw awareness**: a repetition on the search path, one piece each, or 100 plies without
   progress score 0, matching [docs/RULES.md](RULES.md).
 
+## Endgame tablebase
+
+Every position with three pieces (two against one) is solved exactly by retrograde analysis in
+[`tools/generate-tablebase.ts`](../tools/generate-tablebase.ts), about 40 seconds with `npm run tablebase`.
+The result is [`public/tablebase/3pieces.bin.gz`](../public/tablebase/3pieces.bin.gz), 205 KB compressed.
+It stores win, loss or draw and the exact distance in plies for 3.1 million positions.
+
+The worker loads it in the background. From then on the search stops at any three-piece position
+with the exact result, so these endgames are played perfectly. [`tools/tablebase.test.ts`](../tools/tablebase.test.ts)
+checks the committed file two ways:
+
+- **It is a fixpoint.** 30,000 random entries each equal the value implied by their successors.
+- **It agrees with a plain search that does not use the table.** On random positions, short wins
+  and losses have exactly the same distance, and draws never show a forced result.
+
+What the tables say:
+
+| Signature | To move | Positions | Win   | Draw  | Loss  | Longest win (plies) |
+| --------- | ------- | --------- | ----- | ----- | ----- | ------------------- |
+| KK-K      | White   | 124,992   | 30.6% | 69.4% | 0.0%  | 5                   |
+| KK-K      | Black   | 124,992   | 8.0%  | 91.8% | 0.2%  | 1                   |
+| KK-M      | White   | 109,368   | 97.9% | 2.1%  | 0.0%  | 9                   |
+| KK-M      | Black   | 109,368   | 0.2%  | 20.0% | 79.8% | 1                   |
+| KM-K      | White   | 218,736   | 19.3% | 80.7% | 0.0%  | 5                   |
+| KM-K      | Black   | 218,736   | 8.4%  | 91.6% | 0.0%  | 1                   |
+| KM-M      | White   | 191,456   | 96.5% | 3.5%  | 0.0%  | 25                  |
+| KM-M      | Black   | 191,456   | 0.2%  | 22.3% | 77.4% | 1                   |
+| MM-K      | White   | 95,480    | 7.3%  | 92.7% | 0.0%  | 1                   |
+| MM-K      | Black   | 95,480    | 8.9%  | 91.1% | 0.0%  | 1                   |
+| MM-M      | White   | 83,600    | 70.4% | 29.6% | 0.0%  | 37                  |
+| MM-M      | Black   | 83,600    | 0.3%  | 48.5% | 51.3% | 1                   |
+
+K = king, M = man; White has the two pieces. The rows for one against two follow by symmetry.
+
+- **Two kings cannot force a win against a lone king.** They only win through an immediate tactic,
+  within 5 plies. Otherwise the lone king always escapes along an open line. The same holds for a king and a man.
+- **Against a lone man, a king makes the win almost certain** (96–98%). Two men against a man win
+  70% of the time, sometimes only after 37 plies.
+
+The tablebase ignores the 100-ply no-progress rule. None of its wins comes close to that length.
+
 ## Evaluation
 
 [`evaluate.ts`](../src/ai/evaluate.ts) is deliberately small, because the search does most of the work:
