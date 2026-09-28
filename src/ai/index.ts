@@ -6,4 +6,6 @@ export type { Level } from './levels';
 export { handleRequest } from './protocol';
 export type { AiRequest, AiResponse } from './protocol';
 export { MATE, Searcher, mateIn } from './search';
+export { SIGNATURES, Tablebase, flipColours } from './tablebase';
+export type { Outcome } from './tablebase';
 export type { SearchOptions, SearchResult } from './search';

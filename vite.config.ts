@@ -7,7 +7,7 @@ export default defineConfig({
   base: process.env.GITHUB_PAGES === 'true' ? '/turkish-draughts/' : '/',
   plugins: [react()],
   test: {
-    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'tools/**/*.test.ts'],
     coverage: {
       provider: 'v8',
       include: ['src/engine/**', 'src/ai/**'],
