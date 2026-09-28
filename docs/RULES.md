@@ -77,8 +77,8 @@ not illustrate are tested in [`edge-cases.test.ts`](../src/engine/edge-cases.tes
 - **Draw — repetition:** the same position occurs for the third time (**R**, **T 4g**). "Same position"
   includes the side to move, as in chess.
 - **Draw — agreement:** both players agree (**R**, **T 5i**). A player may offer a draw at most
-  **2 times per game** (**T 3g**). Against the computer, the AI accepts when its evaluation of the
-  position is not better than a draw for itself.
+  **2 times per game** (**T 3g**). Against the computer, the AI accepts unless its own evaluation
+  says it is clearly better, by a quarter of a man or more (see [docs/AI.md](AI.md)).
 - **Draw — no progress (project rule):** 100 plies (50 moves each) without a capture or a man move.
   TÜDAF leaves this to the arbiter: "no progress" (**T 3g, 4g**) or "neither side can win by normal
   means" (**T 4f**). Without an arbiter, this fixed limit stands in for that judgement.
