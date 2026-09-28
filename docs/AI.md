@@ -64,13 +64,13 @@ comparison measures search and evaluation, not rule bugs.
 
 Results (Node.js 24 on a 12-thread laptop; W/D/L from the first player's side):
 
-| Match                                                | Games | Result        | Score | Elo difference |
-| ---------------------------------------------------- | ----- | ------------- | ----- | -------------- |
-| New, 0.2 s per move vs legacy depth 3 (old "Medium") | 40    | +36 =4 −0     | 95.0% | +512           |
-| New, 0.2 s per move vs legacy depth 5 (old "Hard")   | 20    | +19 =1 −0     | 97.5% | +636           |
-| Easy vs Beginner                                     | 20    | +20 =0 −0     | 100%  | > +400         |
-| Medium vs Easy                                       | 20    | MEDIUM_RESULT |
-| Hard vs Medium                                       | 20    | HARD_RESULT   |
+| Match                                                | Games | Result    | Score | Elo difference |
+| ---------------------------------------------------- | ----- | --------- | ----- | -------------- |
+| New, 0.2 s per move vs legacy depth 3 (old "Medium") | 40    | +36 =4 −0 | 95.0% | +512           |
+| New, 0.2 s per move vs legacy depth 5 (old "Hard")   | 20    | +19 =1 −0 | 97.5% | +636           |
+| Easy vs Beginner                                     | 20    | +20 =0 −0 | 100%  | > +400         |
+| Medium vs Easy                                       | 20    | +19 =1 −0 | 97.5% | +636           |
+| Hard vs Medium                                       | 20    | +17 =1 −2 | 87.5% | +338           |
 
 Elo differences from small samples are rough; they show the direction and the order of magnitude.
 
