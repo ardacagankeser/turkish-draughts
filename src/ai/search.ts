@@ -1,6 +1,7 @@
 import type { Board, Game, Move } from '../engine';
 import { BLACK, NO_PROGRESS_LIMIT, WHITE, generateMoves, isKing } from '../engine';
 import { evaluate } from './evaluate';
+import type { Tablebase } from './tablebase';
 import { EXACT, LOWER, TranspositionTable, UPPER } from './tt';
 import type { Hash } from './zobrist';
 import { hashBoard, moveDelta } from './zobrist';
@@ -54,6 +55,8 @@ export function mateIn(score: number): number | null {
  */
 export class Searcher {
   readonly tt: TranspositionTable;
+  /** Exact results for three-piece endgames, used once it has been loaded. */
+  tablebase: Tablebase | null = null;
 
   #board!: Board;
   #hash: Hash = { hi: 0, lo: 0 };
@@ -219,6 +222,15 @@ export class Searcher {
     const quiet = this.#quiet[at] ?? 0;
     if (quiet >= NO_PROGRESS_LIMIT || this.#isRepetition(at, quiet)) return 0;
     if (this.#whitePieces === 1 && this.#blackPieces === 1) return 0;
+    if (this.tablebase && this.#whitePieces + this.#blackPieces === 3) {
+      const outcome = this.tablebase.probe(this.#board);
+      if (outcome) {
+        if (outcome.result === 'draw') return 0;
+        // Same convention as a lost position without moves: a result `n` plies away.
+        const score = MATE - ply - outcome.plies;
+        return outcome.result === 'win' ? score : -score;
+      }
+    }
 
     const board = this.#board;
     const moves = generateMoves(board);

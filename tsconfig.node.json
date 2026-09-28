@@ -17,5 +17,5 @@
     "noUnusedParameters": true,
     "exactOptionalPropertyTypes": true
   },
-  "include": ["vite.config.ts", "eslint.config.js", "bench"]
+  "include": ["vite.config.ts", "eslint.config.js", "bench", "tools"]
 }
