@@ -32,7 +32,7 @@ export type GameResult =
     }
   | {
       readonly winner: null;
-      readonly reason: 'one-piece-each' | 'repetition' | 'no-progress';
+      readonly reason: 'one-piece-each' | 'repetition' | 'no-progress' | 'agreement';
     };
 
 export const colorOf = (piece: Piece): Color | 0 => Math.sign(piece) as Color | 0;

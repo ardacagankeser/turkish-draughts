@@ -1,7 +1,7 @@
 import { Board } from './board';
 import { parseSquare, squareName } from './notation';
 import type { Color, Piece } from './types';
-import { BLACK, KING, MAN, WHITE, colorOf, isKing } from './types';
+import { BLACK, KING, MAN, WHITE, colorOf, isKing, promotionRank, rankOf } from './types';
 
 /**
  * Positions use the draughts FEN convention: side to move, then each side's pieces,
@@ -30,6 +30,9 @@ export function parseFen(fen: string): Board {
       const king = name.charAt(0).toUpperCase() === 'K';
       const square = parseSquare(king ? name.slice(1) : name);
       if (board.get(square) !== 0) throw new Error(`Square ${name} is listed twice`);
+      if (!king && rankOf(square) === promotionRank(color)) {
+        throw new Error(`The man on ${name} is on its promotion rank and must be a king`);
+      }
       board.set(square, (color * (king ? KING : MAN)) as Piece);
     }
   }

@@ -97,6 +97,22 @@ describe('end of game', () => {
     expect(game.history).toHaveLength(NO_PROGRESS_LIMIT);
   });
 
+  it('records a draw by agreement', () => {
+    const game = new Game();
+    game.agreeDraw();
+    expect(game.result).toEqual({ winner: null, reason: 'agreement' });
+    expect(game.legalMoves).toEqual([]);
+  });
+
+  it('keeps a move list in TÜDAF notation', () => {
+    const game = new Game('W:WKh1,e5,a2:Ba7,b7,c7,d7,a6,b6,c6,d6,h6,a5,c5,f5');
+    game.play('h1xh8');
+    game.play('f5xd5');
+    expect(game.moveList).toEqual(['h1xh6→h8', 'f5xe5']);
+    game.undo();
+    expect(game.moveList).toEqual(['h1xh6→h8']);
+  });
+
   it('records resignation and timeouts', () => {
     const resigned = new Game();
     resigned.resign(WHITE);
@@ -110,7 +126,7 @@ describe('end of game', () => {
 
 describe('FEN', () => {
   it('round-trips positions', () => {
-    for (const fen of [INITIAL_FEN, 'B:WKa1,d4:BKe5,h8', 'W:W:Ba1,a2']) {
+    for (const fen of [INITIAL_FEN, 'B:WKa1,d4:BKe5,h8', 'W:W:Ba2,a3']) {
       expect(toFen(parseFen(fen))).toBe(fen);
     }
   });

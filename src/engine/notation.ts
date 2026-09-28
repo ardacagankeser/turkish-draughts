@@ -25,6 +25,26 @@ export function moveToNotation(move: Move): string {
 }
 
 /**
+ * The notation used in the TÜDAF rulebook: the start square followed by every
+ * captured square (`f3xf4xe5`). That alone does not say where a king stops after its
+ * last capture, so when another legal move in `legalMoves` captures the same pieces
+ * from the same square, the landing square is appended: `h1xh6→h8`.
+ */
+export function moveToTudafNotation(move: Move, legalMoves: readonly Move[]): string {
+  if (move.captures.length === 0) return moveToNotation(move);
+  const text = [move.from, ...move.captures].map(squareName).join('x');
+  const captured = new Set(move.captures);
+  const ambiguous = legalMoves.some(
+    (other) =>
+      other.from === move.from &&
+      other.to !== move.to &&
+      other.captures.length === captured.size &&
+      other.captures.every((square) => captured.has(square)),
+  );
+  return ambiguous ? `${text}→${squareName(move.to)}` : text;
+}
+
+/**
  * Finds the legal move matching `notation`. Accepts the full notation, or just the
  * start and end squares (`h1xf7`, `h1-f7`) when that is unambiguous.
  */
