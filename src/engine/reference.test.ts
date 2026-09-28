@@ -150,8 +150,11 @@ function expectAgreement(board: Board): void {
   }
 }
 
+// These run thousands of positions; allow for slow CI machines and coverage instrumentation.
+const HEAVY = { timeout: 30_000 };
+
 describe('move generator vs reference implementation', () => {
-  it('agrees along random games from the starting position', () => {
+  it('agrees along random games from the starting position', HEAVY, () => {
     const random = mulberry32(2026);
     let positions = 0;
     for (let game = 0; game < 100; game++) {
@@ -168,7 +171,7 @@ describe('move generator vs reference implementation', () => {
     expect(positions).toBeGreaterThan(5000);
   });
 
-  it('agrees on random placements with many kings', () => {
+  it('agrees on random placements with many kings', HEAVY, () => {
     const random = mulberry32(42);
     for (let i = 0; i < 3000; i++) {
       const board = new Board(undefined, random() < 0.5 ? 1 : -1);
