@@ -1,6 +1,6 @@
 export { Board } from './board';
 export { INITIAL_FEN, parseFen, toFen } from './fen';
-export { Game, NO_PROGRESS_LIMIT } from './game';
+export { Game, MAX_DRAW_OFFERS, NO_PROGRESS_LIMIT } from './game';
 export { generateCaptures, generateMoves, generateQuietMoves, perft } from './movegen';
-export { findMove, moveToNotation, parseSquare, squareName } from './notation';
+export { findMove, moveToNotation, moveToTudafNotation, parseSquare, squareName } from './notation';
 export * from './types';

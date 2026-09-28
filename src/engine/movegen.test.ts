@@ -21,14 +21,14 @@ describe('men', () => {
   it('cannot jump two pieces in a row or land off the board', () => {
     expect(notations('W:Wd4:Bd5,d6,a8')).not.toContain('d4xd6');
     expect(notations('W:Wa4:Ba5,a6,h8').some((n) => n.includes('x'))).toBe(false);
-    expect(notations('W:Wd7:Bd8,h1').some((n) => n.includes('x'))).toBe(false);
+    expect(notations('W:Wd7:Bd8,h5').some((n) => n.includes('x'))).toBe(false);
   });
 
   it('promote when a quiet move reaches the far rank', () => {
-    const game = new Game('W:Wd7:Bh1,a1');
+    const game = new Game('W:Wd7:Bh5,a5');
     const move = game.play('d7-d8');
     expect(move.promotes).toBe(true);
-    expect(game.fen()).toBe('B:WKd8:Ba1,h1');
+    expect(game.fen()).toBe('B:WKd8:Ba5,h5');
   });
 });
 
@@ -70,7 +70,7 @@ describe('capture rules', () => {
 
   it('do not let a captured piece be jumped twice', () => {
     // Around a ring of men, the king cannot re-use a removed piece to keep going.
-    const moves = new Game('W:WKa1:Ba3,c8,h6,f1,h8').legalMoves;
+    const moves = new Game('W:WKa1:Ba3,c8,h6,Kf1,h8').legalMoves;
     for (const move of moves) expect(new Set(move.captures).size).toBe(move.captures.length);
   });
 
@@ -85,7 +85,7 @@ describe('capture rules', () => {
 
 describe('Board.make / unmake', () => {
   it('restores the exact position, including promotion and captured kings', () => {
-    const board = parseFen('W:Wf6,a4,c4:BKe8,f7,a7,h1');
+    const board = parseFen('W:Wf6,a4,c4:BKe8,f7,a7,h5');
     const before = toFen(board);
     const game = new Game(before);
     for (const move of game.legalMoves) {

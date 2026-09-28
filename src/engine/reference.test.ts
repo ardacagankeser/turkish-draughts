@@ -184,6 +184,6 @@ describe('move generator vs reference implementation', () => {
   });
 
   it('agrees on a dense king position with long chains', () => {
-    expectAgreement(parseFen('W:WKa1,Kh8:Bb3,b5,b7,d2,d4,d6,f3,f5,f7,g2,c8,e1'));
+    expectAgreement(parseFen('W:WKa1,Kh8:Bb3,b5,b7,d2,d4,d6,f3,f5,f7,g2,c8,Ke1'));
   });
 });

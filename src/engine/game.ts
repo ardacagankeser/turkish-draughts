@@ -1,18 +1,24 @@
 import type { Board } from './board';
 import { INITIAL_FEN, parseFen, toFen } from './fen';
 import { generateMoves } from './movegen';
-import { findMove } from './notation';
+import { findMove, moveToTudafNotation } from './notation';
 import type { Color, GameResult, Move } from './types';
 import { BLACK, WHITE, isKing, opponent } from './types';
 
 /**
  * Plies without a capture or a man move before the game is drawn (50 moves each).
- * Project convention; the TÜDAF rules have no such limit. See docs/RULES.md.
+ * TÜDAF leaves "no progress" draws to the arbiter; this is the project's fixed limit.
+ * See docs/RULES.md.
  */
 export const NO_PROGRESS_LIMIT = 100;
 
+/** Draw offers each player may make per game (TÜDAF tournament rules 3g). */
+export const MAX_DRAW_OFFERS = 2;
+
 interface HistoryEntry {
   readonly move: Move;
+  /** The move in TÜDAF notation, disambiguated against the moves legal at the time. */
+  readonly notation: string;
   readonly quietPlies: number;
 }
 
@@ -53,6 +59,11 @@ export class Game {
     return this.#history.map((entry) => entry.move);
   }
 
+  /** The moves played so far in TÜDAF notation (`f3xf4xe5`, `h1xh6→h8`). */
+  get moveList(): readonly string[] {
+    return this.#history.map((entry) => entry.notation);
+  }
+
   /** Legal moves for the side to move; empty once the game is over. */
   get legalMoves(): readonly Move[] {
     return this.#result ? [] : this.#legalMoves;
@@ -72,7 +83,11 @@ export class Game {
     if (!move) throw new Error('Illegal move');
 
     const progress = move.captures.length > 0 || !isKing(this.#board.get(move.from));
-    this.#history.push({ move, quietPlies: this.#quietPlies });
+    this.#history.push({
+      move,
+      notation: moveToTudafNotation(move, this.#legalMoves),
+      quietPlies: this.#quietPlies,
+    });
     this.#quietPlies = progress ? 0 : this.#quietPlies + 1;
     this.#board.make(move);
     this.#legalMoves = generateMoves(this.#board);
@@ -95,6 +110,11 @@ export class Game {
 
   resign(color: Color): void {
     if (!this.#result) this.#result = { winner: opponent(color), reason: 'resignation' };
+  }
+
+  /** Ends the game in a draw agreed by both players. */
+  agreeDraw(): void {
+    if (!this.#result) this.#result = { winner: null, reason: 'agreement' };
   }
 
   /** Records that `color` ran out of time. */
