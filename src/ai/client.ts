@@ -1,3 +1,4 @@
+import type { Color } from '../engine';
 import type { Level } from './levels';
 import type { AiRequest, AiResponse } from './protocol';
 
@@ -20,17 +21,17 @@ const createWorker = (): WorkerLike =>
 
 /**
  * Promise-based access to the AI running in a Web Worker. A search cannot be
- * interrupted from outside, so `cancel()` terminates the worker and starts a new one.
+ * interrupted from outside, so `cancel()` terminates the worker. A worker is started
+ * lazily on the next request, which also makes the client reusable after `dispose()`.
  */
 export class AiClient {
   readonly #create: () => WorkerLike;
-  #worker: WorkerLike;
+  #worker: WorkerLike | null = null;
   #nextId = 1;
   readonly #pending = new Map<number, Pending>();
 
   constructor(create: () => WorkerLike = createWorker) {
     this.#create = create;
-    this.#worker = this.#spawn();
   }
 
   async chooseMove(fen: string, moves: readonly string[], level: Level): Promise<MoveResponse> {
@@ -39,13 +40,20 @@ export class AiClient {
     return response;
   }
 
-  async offerDraw(fen: string, moves: readonly string[], level: Level): Promise<boolean> {
+  /** Asks the AI, playing `ai`, whether it accepts a draw. */
+  async offerDraw(
+    fen: string,
+    moves: readonly string[],
+    level: Level,
+    ai: Color,
+  ): Promise<boolean> {
     const response = await this.#send({
       id: this.#nextId++,
       type: 'draw-offer',
       fen,
       moves,
       level,
+      ai,
     });
     if (response.type !== 'draw-offer') throw new Error('Unexpected response from the AI');
     return response.accepted;
@@ -57,14 +65,14 @@ export class AiClient {
 
   /** Stops any search in progress. Pending calls reject with an `AbortError`. */
   cancel(): void {
-    this.#worker.terminate();
+    this.#worker?.terminate();
+    this.#worker = null;
     this.#rejectAll();
-    this.#worker = this.#spawn();
   }
 
+  /** Releases the worker. The client starts a new one if it is used again. */
   dispose(): void {
-    this.#worker.terminate();
-    this.#rejectAll();
+    this.cancel();
   }
 
   #spawn(): WorkerLike {
@@ -83,6 +91,7 @@ export class AiClient {
   #send(request: AiRequest): Promise<AiResponse> {
     return new Promise((resolve, reject) => {
       this.#pending.set(request.id, { resolve, reject });
+      this.#worker ??= this.#spawn();
       this.#worker.postMessage(request);
     });
   }
