@@ -19,10 +19,17 @@ export function Panel({ game, session, onNewGame }: PanelProps) {
   const over = game.result !== null;
   const humanTurn = !over && game.turn === human && !game.thinking;
 
+  // Keep the move shown in view: the newest one while playing, the chosen one while browsing.
   useEffect(() => {
     const list = moveListEnd.current;
-    if (list) list.scrollTop = list.scrollHeight;
-  }, [game.moveList.length]);
+    if (!list) return;
+    const current = list.querySelector<HTMLElement>('[aria-current="true"]');
+    if (current && typeof current.scrollIntoView === 'function') {
+      current.scrollIntoView({ block: 'nearest' });
+    } else if (!game.browsing) {
+      list.scrollTop = list.scrollHeight;
+    }
+  }, [game.moveNumber, game.moveList.length, game.browsing]);
 
   useEffect(() => {
     if (!confirmResign) return;
@@ -39,7 +46,9 @@ export function Panel({ game, session, onNewGame }: PanelProps) {
   const capturedBy = (color: Color) => 16 - (color === 1 ? blackPieces : whitePieces);
 
   let status = '';
-  if (game.result) {
+  if (game.browsing) {
+    status = t('browsing', { n: game.moveNumber, total: game.liveMoveNumber });
+  } else if (game.result) {
     const outcome =
       game.result.winner === null
         ? t('draw')
@@ -134,13 +143,70 @@ export function Panel({ game, session, onNewGame }: PanelProps) {
           <p className="empty">{t('noMoves')}</p>
         ) : (
           <ol ref={moveListEnd}>
-            {rows.map(([white, black], i) => (
-              <li key={i}>
-                <span className="move">{white}</span>
-                {black && <span className="move">{black}</span>}
-              </li>
-            ))}
+            {rows.map(([white, black], i) => {
+              // The position after White's move is ply 2i + 1, after Black's 2i + 2.
+              const cell = (notation: string, ply: number) => (
+                <button
+                  type="button"
+                  className="move"
+                  aria-current={game.moveNumber === ply}
+                  onClick={() => {
+                    session.showPly(ply);
+                  }}
+                >
+                  {notation}
+                </button>
+              );
+              return (
+                <li key={i}>
+                  {cell(white, 2 * i + 1)}
+                  {black !== undefined && cell(black, 2 * i + 2)}
+                </li>
+              );
+            })}
           </ol>
+        )}
+        <div className="navigation" role="group" aria-label={t('navigation')}>
+          <button
+            type="button"
+            aria-label={t('firstMove')}
+            onClick={session.showFirst}
+            disabled={game.moveNumber === 0}
+          >
+            ⏮
+          </button>
+          <button
+            type="button"
+            aria-label={t('previousMove')}
+            onClick={session.showPrevious}
+            disabled={game.moveNumber === 0}
+          >
+            ◀
+          </button>
+          <button
+            type="button"
+            aria-label={t('nextMove')}
+            onClick={session.showNext}
+            disabled={!game.browsing}
+          >
+            ▶
+          </button>
+          <button
+            type="button"
+            aria-label={t('lastMove')}
+            onClick={session.showLive}
+            disabled={!game.browsing}
+          >
+            ⏭
+          </button>
+        </div>
+        {game.browsing && (
+          <button type="button" className="primary back-to-game" onClick={session.showLive}>
+            {t('backToGame')}
+            {game.missedMoves > 0 && (
+              <span className="badge">{t('newMoves', { n: game.missedMoves })}</span>
+            )}
+          </button>
         )}
       </section>
 

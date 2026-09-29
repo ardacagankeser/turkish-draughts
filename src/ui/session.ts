@@ -32,7 +32,14 @@ export interface Snapshot {
   /** Pieces captured by the last move, kept for the fade-out animation. */
   readonly captured: readonly UiPiece[];
   readonly lastMove: Move | null;
+  /** Number of moves played to reach the position shown. */
   readonly moveNumber: number;
+  /** Moves in the live game; larger than `moveNumber` while browsing earlier moves. */
+  readonly liveMoveNumber: number;
+  /** True while an earlier position is shown; the board is then read-only. */
+  readonly browsing: boolean;
+  /** Moves played in the live game since the player started browsing. */
+  readonly missedMoves: number;
   readonly turn: Color;
   readonly result: GameResult | null;
   /** Increases every time a game ends, so a game-over dialog can be shown once per ending. */
@@ -52,6 +59,14 @@ export interface Snapshot {
 
 type Listener = () => void;
 
+/** An earlier position shown while browsing the moves of the game. */
+interface View {
+  readonly ply: number;
+  readonly pieces: UiPiece[];
+  readonly captured: UiPiece[];
+  readonly lastMove: Move | null;
+}
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const isAbort = (error: unknown) => error instanceof DOMException && error.name === 'AbortError';
 
@@ -70,6 +85,9 @@ export class GameSession {
   #pieces: UiPiece[];
   #captured: UiPiece[] = [];
   #lastMove: Move | null;
+  /** The position shown while browsing earlier moves; `null` shows the live game. */
+  #view: View | null = null;
+  #missedMoves = 0;
   #selection: Selection | null = null;
   #thinking = false;
   #hint: Move | null = null;
@@ -147,7 +165,7 @@ export class GameSession {
   // --- Actions ----------------------------------------------------------------
 
   readonly clickSquare = (square: Square): void => {
-    if (!this.#humanToMove()) return;
+    if (!this.#canPlay()) return;
     const result = click(this.#game.legalMoves, this.#selection, square);
     if (result.type === 'play') this.#commit(result.move);
     else {
@@ -182,7 +200,7 @@ export class GameSession {
   };
 
   readonly requestHint = (): void => {
-    if (!this.#humanToMove()) return;
+    if (!this.#canPlay()) return;
     const token = this.#token;
     this.#setThinking(true);
     this.#ai
@@ -233,6 +251,49 @@ export class GameSession {
     this.#emit();
   };
 
+  // --- Browsing earlier moves ----------------------------------------------------
+
+  /**
+   * Shows the position after `ply` moves; the number of moves in the game shows the live
+   * position again. Stepping forward by one move animates it; other jumps do not.
+   */
+  readonly showPly = (ply: number): void => {
+    const length = this.#game.history.length;
+    const target = Math.max(0, Math.min(length, Math.trunc(ply)));
+    const current = this.#view?.ply ?? length;
+    if (target === current) return;
+    const move = this.#game.history[current];
+    if (target === length) {
+      this.#view = null;
+      this.#missedMoves = 0;
+    } else if (this.#view && target === current + 1 && move) {
+      const next = applyMove(this.#view.pieces, move);
+      this.#view = { ply: target, pieces: next.pieces, captured: next.captured, lastMove: move };
+    } else {
+      this.#view = this.#positionAt(target);
+    }
+    this.#selection = null;
+    this.#hint = null;
+    this.#refreshEvaluation();
+    this.#emit();
+  };
+
+  readonly showPrevious = (): void => {
+    this.showPly(this.#displayedPly() - 1);
+  };
+
+  readonly showNext = (): void => {
+    this.showPly(this.#displayedPly() + 1);
+  };
+
+  readonly showFirst = (): void => {
+    this.showPly(0);
+  };
+
+  readonly showLive = (): void => {
+    this.showPly(this.#game.history.length);
+  };
+
   /** Shows or hides the evaluation bar; hidden, the analysis does not run at all. */
   readonly toggleEvaluation = (): void => {
     this.#showEvaluation = !this.#showEvaluation;
@@ -258,6 +319,30 @@ export class GameSession {
     );
   }
 
+  /** The human may move: it is their turn in the live game and the live position is shown. */
+  #canPlay(): boolean {
+    return this.#humanToMove() && this.#view === null;
+  }
+
+  #displayedPly(): number {
+    return this.#view?.ply ?? this.#game.history.length;
+  }
+
+  #positionAt(ply: number): View {
+    const game = new Game();
+    const history = this.#game.history;
+    for (let i = 0; i < ply; i++) {
+      const move = history[i];
+      if (move) game.play(move);
+    }
+    return {
+      ply,
+      pieces: piecesFromBoard(game.board),
+      captured: [],
+      lastMove: history[ply - 1] ?? null,
+    };
+  }
+
   #moves(): string[] {
     return this.#game.history.map(moveToNotation);
   }
@@ -270,9 +355,11 @@ export class GameSession {
     this.#lastMove = played;
     this.#selection = null;
     this.#hint = null;
-    if (played.promotes) this.#setNotice('dama');
+    if (played.promotes && !this.#view) this.#setNotice('dama');
     if (this.#game.isOver) this.#resultId++;
-    this.#refreshEvaluation();
+    // While browsing, the shown position (and its analysis) stays; the move is counted.
+    if (this.#view) this.#missedMoves++;
+    else this.#refreshEvaluation();
     this.#save();
     this.#emit();
     this.#maybeAiMove();
@@ -280,6 +367,8 @@ export class GameSession {
 
   /** Rebuilds the board without animation (new game, undo). */
   #reset(): void {
+    this.#view = null;
+    this.#missedMoves = 0;
     this.#pieces = piecesFromBoard(this.#game.board);
     this.#captured = [];
     this.#lastMove = this.#game.history.at(-1) ?? null;
@@ -296,7 +385,8 @@ export class GameSession {
    * with the bar hidden (or no game yet) nothing is analysed.
    */
   #refreshEvaluation(): void {
-    const result = this.#game.result;
+    // An earlier position of a finished game is analysed like any other.
+    const result = this.#view ? null : this.#game.result;
     if (result) {
       this.#analysis.stop();
       const score = result.winner === null ? 0 : result.winner * MATE;
@@ -310,7 +400,8 @@ export class GameSession {
     }
     // The previous evaluation stays until the first update, so the bar moves smoothly.
     if (this.#evaluation?.final) this.#evaluation = null;
-    this.#analysis.analyse(INITIAL_FEN, this.#moves(), (update) => {
+    const shown = this.#moves().slice(0, this.#displayedPly());
+    this.#analysis.analyse(INITIAL_FEN, shown, (update) => {
       this.#evaluation = { score: update.score, depth: update.depth, pv: update.pv, final: false };
       this.#emit();
     });
@@ -398,16 +489,20 @@ export class GameSession {
   #build(): Snapshot {
     const game = this.#game;
     const human = this.#settings?.human ?? 1;
-    const humanMoves = this.#humanToMove() ? game.legalMoves : [];
+    const humanMoves = this.#canPlay() ? game.legalMoves : [];
+    const view = this.#view;
     // The human has a move to take back once they have played at least once.
     const humanPlies =
       human === 1 ? Math.ceil(game.history.length / 2) : Math.floor(game.history.length / 2);
     return {
       settings: this.#settings,
-      pieces: this.#pieces,
-      captured: this.#captured,
-      lastMove: this.#lastMove,
-      moveNumber: game.history.length,
+      pieces: view?.pieces ?? this.#pieces,
+      captured: view?.captured ?? this.#captured,
+      lastMove: view ? view.lastMove : this.#lastMove,
+      moveNumber: view?.ply ?? game.history.length,
+      liveMoveNumber: game.history.length,
+      browsing: view !== null,
+      missedMoves: this.#missedMoves,
       turn: game.turn,
       result: game.result,
       resultId: this.#resultId,

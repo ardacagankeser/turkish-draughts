@@ -47,6 +47,30 @@ export function App({ createAi, createAnalysis, storage = globalThis.localStorag
   // The game-over dialog shows once per ending, until the player closes it.
   const [closedResult, setClosedResult] = useState(0);
 
+  // ← → Home End browse the moves, as on lichess. The board's own arrow-key focus
+  // movement, text fields and open dialogs keep their keys.
+  useEffect(() => {
+    const keys: Record<string, () => void> = {
+      ArrowLeft: session.showPrevious,
+      ArrowRight: session.showNext,
+      Home: session.showFirst,
+      End: session.showLive,
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      const action = keys[event.key];
+      const target = event.target instanceof Element ? event.target : null;
+      if (!action || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (target?.closest('.board, input, textarea, select, [role="dialog"]')) return;
+      if (document.querySelector('[role="dialog"]')) return;
+      event.preventDefault();
+      action();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [session]);
+
   useEffect(() => {
     document.documentElement.lang = language;
     document.title = t('title');
@@ -79,7 +103,7 @@ export function App({ createAi, createAnalysis, storage = globalThis.localStorag
 
         <main className="layout">
           <div className="board-area">
-            <div className="board-wrap">
+            <div className={`board-wrap${game.browsing ? ' browsing' : ''}`}>
               <Board
                 pieces={game.pieces}
                 captured={game.captured}
