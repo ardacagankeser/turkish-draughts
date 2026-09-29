@@ -1,6 +1,11 @@
 # Turkish Draughts
 
+[![CI](https://github.com/ardacagankeser/turkish-draughts/actions/workflows/ci.yml/badge.svg)](https://github.com/ardacagankeser/turkish-draughts/actions/workflows/ci.yml)
+[![Deploy](https://github.com/ardacagankeser/turkish-draughts/actions/workflows/deploy.yml/badge.svg)](https://github.com/ardacagankeser/turkish-draughts/actions/workflows/deploy.yml)
+
 Play **Turkish Draughts (Dama)** in the browser against a computer opponent built on alpha-beta search.
+
+**▶ Play now: [ardacagankeser.github.io/turkish-draughts](https://ardacagankeser.github.io/turkish-draughts/)**
 
 > **Status:** full rewrite in progress. The original Python/Flet prototype is preserved on the
 > [`legacy/flet`](https://github.com/ardacagankeser/turkish-draughts/tree/legacy/flet) branch
