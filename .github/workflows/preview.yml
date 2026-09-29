@@ -1,0 +1,44 @@
+name: PR preview
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, closed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: preview-${{ github.event.number }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    name: Deploy preview
+    # Pull requests from forks get a read-only token and cannot push previews.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        if: github.event.action != 'closed'
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Build
+        if: github.event.action != 'closed'
+        run: |
+          npm ci
+          npm run build
+          touch dist/.nojekyll
+        env:
+          BASE_PATH: /${{ github.event.repository.name }}/pr-preview/pr-${{ github.event.number }}/
+
+      # Deploys dist/ to gh-pages/pr-preview/pr-<n>/ and comments the URL on the PR;
+      # removes the preview when the PR is closed.
+      - uses: rossjrw/pr-preview-action@v1
+        with:
+          source-dir: dist
