@@ -5,7 +5,9 @@
 1. `main` is always deployable. Never commit to it directly.
 2. Branch from `main` using a type prefix: `feat/…`, `fix/…`, `chore/…`, `docs/…`, `refactor/…`, `test/…`, `ci/…`.
 3. Keep each pull request focused on one change. Open it early as a draft if you want feedback.
-4. CI must pass and the PR must be reviewed before merging.
+4. CI must pass before merging. Every pull request gets a preview deployment at
+   `https://ardacagankeser.github.io/turkish-draughts/pr-preview/pr-<number>/`, linked in a PR comment.
+   Merging to `main` deploys the site.
 5. Merge with **squash and merge**. The PR title becomes the commit message on `main`.
 6. Delete the branch after merging.
 

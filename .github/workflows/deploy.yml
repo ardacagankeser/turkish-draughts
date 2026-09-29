@@ -1,0 +1,44 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Deploys and previews both write to the gh-pages branch; never cancel a deploy.
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build and deploy to GitHub Pages
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build
+        env:
+          BASE_PATH: /${{ github.event.repository.name }}/
+
+      # Serve files as they are, without Jekyll processing.
+      - run: touch dist/.nojekyll
+
+      - uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: dist
+          branch: gh-pages
+          # Pull request previews live next to the site; keep them.
+          clean-exclude: pr-preview/
+          commit-message: 'Deploy ${{ github.sha }}'

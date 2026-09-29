@@ -3,8 +3,9 @@ import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-  // Served from https://<user>.github.io/turkish-draughts/ on GitHub Pages.
-  base: process.env.GITHUB_PAGES === 'true' ? '/turkish-draughts/' : '/',
+  // Where the app is served from. GitHub Pages serves it under /turkish-draughts/, and
+  // pull request previews under /turkish-draughts/pr-preview/pr-<n>/ (see .github/workflows).
+  base: process.env.BASE_PATH ?? '/',
   plugins: [react()],
   test: {
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'tools/**/*.test.ts'],
