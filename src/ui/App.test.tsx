@@ -68,11 +68,17 @@ describe('App', () => {
     const { user } = renderApp();
     await user.click(screen.getByRole('button', { name: 'Start game' }));
     await user.click(screen.getByRole('button', { name: 'Resign' }));
-    await user.click(screen.getByRole('button', { name: 'Resign this game?' }));
+    await user.click(screen.getByRole('button', { name: 'Are you sure?' }));
     const dialog = screen.getByRole('dialog', { name: 'You lose' });
     expect(dialog).toHaveTextContent('By resignation.');
     await user.click(within(dialog).getByRole('button', { name: 'Close' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    // The finished game stays finished: only a new game (or flipping the board) is possible.
+    expect(screen.getByRole('status')).toHaveTextContent('Game over — You lose · By resignation.');
+    for (const name of ['Take back', 'Hint', /Offer draw/, 'Resign']) {
+      expect(screen.getByRole('button', { name })).toBeDisabled();
+    }
+    expect(screen.getByRole('button', { name: 'New game' })).toBeEnabled();
   });
 });
 
