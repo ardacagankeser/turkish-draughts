@@ -9,3 +9,8 @@ export { MATE, Searcher, mateIn } from './search';
 export { SIGNATURES, Tablebase, flipColours } from './tablebase';
 export type { Outcome } from './tablebase';
 export type { SearchOptions, SearchResult } from './search';
+export { AnalysisClient } from './analysis-client';
+export type { AnalysisOptions, AnalysisWorkerLike } from './analysis-client';
+export { analyse, isAnalysisRequest } from './analysis';
+export type { AnalysisRequest, AnalysisUpdate } from './analysis';
+export { WIN_CURVE_K, expectedScore, winningChances } from './winning-chances';

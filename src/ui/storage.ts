@@ -24,6 +24,7 @@ export interface SavedState {
   readonly ending: Ending | null;
   readonly drawOffers: number;
   readonly flipped: boolean;
+  readonly showEvaluation: boolean;
 }
 
 const KEY = 'turkish-draughts:v1';
@@ -35,6 +36,7 @@ export const EMPTY_STATE: SavedState = {
   ending: null,
   drawOffers: 0,
   flipped: false,
+  showEvaluation: true,
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -76,6 +78,7 @@ export function load(storage: Storage = globalThis.localStorage): SavedState {
       ending: parseEnding(data.ending),
       drawOffers: typeof data.drawOffers === 'number' ? data.drawOffers : 0,
       flipped: data.flipped === true,
+      showEvaluation: data.showEvaluation !== false,
     };
   } catch {
     return EMPTY_STATE;

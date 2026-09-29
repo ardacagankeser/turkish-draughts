@@ -1,6 +1,7 @@
 import type { Color, GameResult, Move, Square } from '../engine';
 import { Game, INITIAL_FEN, MAX_DRAW_OFFERS, findMove, moveToNotation, opponent } from '../engine';
 import type { AiClient, Level } from '../ai';
+import { AnalysisClient, MATE } from '../ai';
 import type { UiPiece } from './pieces';
 import { applyMove, piecesFromBoard } from './pieces';
 import type { Selection } from './selection';
@@ -15,9 +16,13 @@ const HINT_LEVEL: Level = 'hard';
 
 export type Notice = 'drawAccepted' | 'drawDeclined' | 'dama';
 
-export interface EngineInfo {
-  readonly depth: number;
+/** The live evaluation of the position shown, always from White's point of view. */
+export interface Evaluation {
   readonly score: number;
+  readonly depth: number;
+  readonly pv: readonly string[];
+  /** The game is over and `score` is its result (±MATE for a win, 0 for a draw). */
+  readonly final: boolean;
 }
 
 /** Everything the UI renders, as one immutable value per change. */
@@ -39,7 +44,8 @@ export interface Snapshot {
   readonly moveList: readonly string[];
   readonly drawOffersLeft: number;
   readonly notice: Notice | null;
-  readonly engine: EngineInfo | null;
+  readonly evaluation: Evaluation | null;
+  readonly showEvaluation: boolean;
   readonly flipped: boolean;
   readonly canUndo: boolean;
 }
@@ -55,6 +61,7 @@ const isAbort = (error: unknown) => error instanceof DOMException && error.name 
  */
 export class GameSession {
   readonly #ai: AiClient;
+  readonly #analysis: AnalysisClient;
   readonly #storage: Storage;
   readonly #listeners = new Set<Listener>();
 
@@ -69,15 +76,21 @@ export class GameSession {
   #drawOffers: number;
   #notice: Notice | null = null;
   #noticeTimer: ReturnType<typeof setTimeout> | undefined;
-  #engine: EngineInfo | null = null;
+  #evaluation: Evaluation | null = null;
+  #showEvaluation: boolean;
   #flipped: boolean;
   #resultId = 0;
   /** Bumped whenever the position changes under a pending AI request. */
   #token = 0;
   #snapshot: Snapshot;
 
-  constructor(ai: AiClient, storage: Storage = globalThis.localStorage) {
+  constructor(
+    ai: AiClient,
+    storage: Storage = globalThis.localStorage,
+    analysis: AnalysisClient = new AnalysisClient(),
+  ) {
     this.#ai = ai;
+    this.#analysis = analysis;
     this.#storage = storage;
     const saved = load(storage);
     this.#game = new Game();
@@ -99,6 +112,7 @@ export class GameSession {
     this.#settings = saved.settings;
     this.#drawOffers = saved.drawOffers;
     this.#flipped = saved.flipped;
+    this.#showEvaluation = saved.showEvaluation;
     this.#pieces = piecesFromBoard(this.#game.board);
     this.#lastMove = this.#game.history.at(-1) ?? null;
     if (this.#game.isOver) this.#resultId = 1;
@@ -116,6 +130,8 @@ export class GameSession {
 
   /** Starts the AI if it is its turn (after loading a saved game, for instance). */
   readonly start = (): void => {
+    this.#refreshEvaluation();
+    this.#emit();
     this.#maybeAiMove();
   };
 
@@ -123,6 +139,7 @@ export class GameSession {
   readonly stop = (): void => {
     this.#token++;
     this.#ai.dispose();
+    this.#analysis.dispose();
     clearTimeout(this.#noticeTimer);
     this.#thinking = false;
   };
@@ -144,7 +161,7 @@ export class GameSession {
     this.#game = new Game();
     this.#settings = settings;
     this.#drawOffers = 0;
-    this.#engine = null;
+    this.#evaluation = null;
     this.#flipped = settings.human === -1;
     this.#setNotice(null);
     void this.#ai.newGame().catch(() => undefined);
@@ -195,6 +212,7 @@ export class GameSession {
         if (accepted) {
           this.#game.agreeDraw();
           this.#resultId++;
+          this.#refreshEvaluation();
         }
         this.#setNotice(accepted ? 'drawAccepted' : 'drawDeclined');
         this.#save();
@@ -210,6 +228,15 @@ export class GameSession {
     this.#cancelAi();
     this.#game.resign(this.#settings.human);
     this.#resultId++;
+    this.#refreshEvaluation();
+    this.#save();
+    this.#emit();
+  };
+
+  /** Shows or hides the evaluation bar; hidden, the analysis does not run at all. */
+  readonly toggleEvaluation = (): void => {
+    this.#showEvaluation = !this.#showEvaluation;
+    this.#refreshEvaluation();
     this.#save();
     this.#emit();
   };
@@ -245,6 +272,7 @@ export class GameSession {
     this.#hint = null;
     if (played.promotes) this.#setNotice('dama');
     if (this.#game.isOver) this.#resultId++;
+    this.#refreshEvaluation();
     this.#save();
     this.#emit();
     this.#maybeAiMove();
@@ -257,9 +285,35 @@ export class GameSession {
     this.#lastMove = this.#game.history.at(-1) ?? null;
     this.#selection = null;
     this.#hint = null;
+    this.#refreshEvaluation();
     this.#save();
     this.#emit();
     this.#maybeAiMove();
+  }
+
+  /**
+   * Restarts the live analysis for the current position. A finished game shows its result;
+   * with the bar hidden (or no game yet) nothing is analysed.
+   */
+  #refreshEvaluation(): void {
+    const result = this.#game.result;
+    if (result) {
+      this.#analysis.stop();
+      const score = result.winner === null ? 0 : result.winner * MATE;
+      this.#evaluation = { score, depth: 0, pv: [], final: true };
+      return;
+    }
+    if (!this.#showEvaluation || !this.#settings) {
+      this.#analysis.stop();
+      this.#evaluation = null;
+      return;
+    }
+    // The previous evaluation stays until the first update, so the bar moves smoothly.
+    if (this.#evaluation?.final) this.#evaluation = null;
+    this.#analysis.analyse(INITIAL_FEN, this.#moves(), (update) => {
+      this.#evaluation = { score: update.score, depth: update.depth, pv: update.pv, final: false };
+      this.#emit();
+    });
   }
 
   #maybeAiMove(): void {
@@ -280,7 +334,6 @@ export class GameSession {
           this.#emit();
           return;
         }
-        this.#engine = { depth: response.depth, score: response.score };
         this.#commit(findMove(this.#game.legalMoves, response.move));
       })
       .catch((error: unknown) => {
@@ -331,6 +384,7 @@ export class GameSession {
         ending,
         drawOffers: this.#drawOffers,
         flipped: this.#flipped,
+        showEvaluation: this.#showEvaluation,
       },
       this.#storage,
     );
@@ -364,7 +418,8 @@ export class GameSession {
       moveList: game.moveList,
       drawOffersLeft: MAX_DRAW_OFFERS - this.#drawOffers,
       notice: this.#notice,
-      engine: this.#engine,
+      evaluation: this.#evaluation,
+      showEvaluation: this.#showEvaluation,
       flipped: this.#flipped,
       canUndo: this.#settings !== null && !game.isOver && humanPlies > 0,
     };

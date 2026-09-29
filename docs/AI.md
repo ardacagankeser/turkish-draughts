@@ -64,6 +64,42 @@ K = king, M = man; White has the two pieces. The rows for one against two follow
 
 The tablebase ignores the 100-ply no-progress rule. None of its wins comes close to that length.
 
+## Evaluation bar and winning chances
+
+The bar beside the board shows the winning chance, not the raw score. A second worker
+([`analysis.ts`](../src/ai/analysis.ts)) analyses the displayed position one depth at a time and
+reports each depth, from White's point of view. A running search cannot be interrupted from outside:
+that would need a `SharedArrayBuffer`, which requires cross-origin isolation headers that GitHub Pages
+cannot send. So the analysis yields to the event loop between depths and stops as soon as a newer
+position is requested. The transposition table makes each restart cheap.
+
+The curve has the same shape as lichess's: `w(s) = 2 / (1 + e^(−k·s)) − 1`
+([lila#11148](https://github.com/lichess-org/lila/pull/11148)). The constant `k` was fitted for Turkish
+draughts with [`bench/calibrate.ts`](../bench/calibrate.ts):
+
+- **Data:** 240 self-play games (60 ms per move, a small random margin, random 4-ply openings) gave
+  33,004 positions. Each is labelled with the game's final result.
+- **Fit:** `k` maximises the likelihood of the results, **k = 0.0040**, against 0.00368 for chess. A
+  one-man lead (+1.0) means about a 60% expected score for the side ahead.
+
+| Evaluation (White) | Positions | Predicted | Observed |
+| ------------------ | --------- | --------- | -------- |
+| below −3.0         | 5,471     | 11.3%     | 12.6%    |
+| −3.0 to −1.5       | 2,330     | 29.3%     | 31.1%    |
+| −1.5 to −0.5       | 2,470     | 38.5%     | 37.3%    |
+| −0.5 to +0.5       | 8,707     | 50.2%     | 55.8%    |
+| +0.5 to +1.5       | 3,132     | 61.2%     | 60.2%    |
+| +1.5 to +3.0       | 2,681     | 70.5%     | 74.3%    |
+| above +3.0         | 8,213     | 90.5%     | 90.0%    |
+
+The data also shows a **first-move advantage**: White won 112 games, drew 55 and lost 73, and scores
+55.8% in positions the evaluation calls equal. The evaluation does not model this yet (see #7).
+
+```bash
+npm run calibrate -- play --games 30 --seed 1 > samples-1.jsonl   # repeat with other seeds in parallel
+npm run calibrate -- fit samples-*.jsonl
+```
+
 ## Evaluation
 
 [`evaluate.ts`](../src/ai/evaluate.ts) is deliberately small, because the search does most of the work:

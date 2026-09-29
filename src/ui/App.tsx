@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import { AiClient } from '../ai';
+import { AiClient, AnalysisClient } from '../ai';
 import { Board } from './components/Board';
+import { EvalBar } from './components/EvalBar';
 import { GameOverDialog, NewGameDialog } from './components/Dialogs';
 import { Panel } from './components/Panel';
 import type { Language } from './i18n';
@@ -13,6 +14,8 @@ const REPOSITORY = 'https://github.com/ardacagankeser/turkish-draughts';
 interface AppProps {
   /** Creates the AI client; tests pass one backed by a fake worker. */
   readonly createAi?: () => AiClient;
+  /** Creates the live analysis client; tests pass one backed by a fake worker. */
+  readonly createAnalysis?: () => AnalysisClient;
   readonly storage?: Storage;
 }
 
@@ -21,8 +24,15 @@ function initialLanguage(storage: Storage): Language {
   return saved === 'tr' || saved === 'en' ? saved : detectLanguage();
 }
 
-export function App({ createAi, storage = globalThis.localStorage }: AppProps) {
-  const [session] = useState(() => new GameSession(createAi?.() ?? new AiClient(), storage));
+export function App({ createAi, createAnalysis, storage = globalThis.localStorage }: AppProps) {
+  const [session] = useState(
+    () =>
+      new GameSession(
+        createAi?.() ?? new AiClient(),
+        storage,
+        createAnalysis?.() ?? new AnalysisClient(),
+      ),
+  );
   const game = useSyncExternalStore(session.subscribe, session.getSnapshot);
   useEffect(() => {
     session.start();
@@ -68,22 +78,27 @@ export function App({ createAi, storage = globalThis.localStorage }: AppProps) {
         </header>
 
         <main className="layout">
-          <div className="board-wrap">
-            <Board
-              pieces={game.pieces}
-              captured={game.captured}
-              lastMove={game.lastMove}
-              moveNumber={game.moveNumber}
-              legalMoves={game.humanMoves}
-              selection={game.selection}
-              hint={game.hint}
-              flipped={game.flipped}
-              onSquare={session.clickSquare}
-            />
-            {game.notice && (
-              <div className={`notice ${game.notice}`} role="status">
-                {t(game.notice)}
-              </div>
+          <div className="board-area">
+            <div className="board-wrap">
+              <Board
+                pieces={game.pieces}
+                captured={game.captured}
+                lastMove={game.lastMove}
+                moveNumber={game.moveNumber}
+                legalMoves={game.humanMoves}
+                selection={game.selection}
+                hint={game.hint}
+                flipped={game.flipped}
+                onSquare={session.clickSquare}
+              />
+              {game.notice && (
+                <div className={`notice ${game.notice}`} role="status">
+                  {t(game.notice)}
+                </div>
+              )}
+            </div>
+            {(game.showEvaluation || game.evaluation?.final) && (
+              <EvalBar evaluation={game.evaluation} flipped={game.flipped} />
             )}
           </div>
           <Panel
