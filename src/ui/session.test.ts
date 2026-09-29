@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseSquare } from '../engine';
-import { MemoryStorage, fakeAi } from '../test/fakes';
+import { MemoryStorage, fakeAi, fakeAnalysis } from '../test/fakes';
 import type { Snapshot } from './session';
 import { GameSession } from './session';
 
@@ -30,7 +30,7 @@ function until(
 }
 
 function started(human: 1 | -1 = 1, storage = new MemoryStorage()) {
-  const session = new GameSession(fakeAi(), storage);
+  const session = new GameSession(fakeAi(), storage, fakeAnalysis());
   session.start();
   session.newGame({ human, level: 'medium' });
   return { session, storage };
@@ -38,7 +38,7 @@ function started(human: 1 | -1 = 1, storage = new MemoryStorage()) {
 
 describe('GameSession', () => {
   it('waits for settings before playing', () => {
-    const session = new GameSession(fakeAi(), new MemoryStorage());
+    const session = new GameSession(fakeAi(), new MemoryStorage(), fakeAnalysis());
     expect(session.getSnapshot().settings).toBeNull();
     expect(session.getSnapshot().humanMoves).toEqual([]);
     expect(session.getSnapshot().pieces).toHaveLength(32);
@@ -58,7 +58,6 @@ describe('GameSession', () => {
     expect(afterAi.thinking).toBe(false);
     expect(afterAi.turn).toBe(1);
     expect(afterAi.humanMoves.length).toBeGreaterThan(0);
-    expect(afterAi.engine).not.toBeNull();
   });
 
   it('keeps piece identities across a move and reports it for animation', async () => {
@@ -111,7 +110,7 @@ describe('GameSession', () => {
     session.flip();
     session.stop();
 
-    const restored = new GameSession(fakeAi(), storage).getSnapshot();
+    const restored = new GameSession(fakeAi(), storage, fakeAnalysis()).getSnapshot();
     expect(restored.moveList).toHaveLength(2);
     expect(restored.settings).toEqual({ human: 1, level: 'medium' });
     expect(restored.flipped).toBe(true);
@@ -120,7 +119,7 @@ describe('GameSession', () => {
   it('ignores corrupt saved data', () => {
     const storage = new MemoryStorage();
     storage.setItem('turkish-draughts:v1', '{"settings":{"human":3},"moves":["z9-z9"]}');
-    const snapshot = new GameSession(fakeAi(), storage).getSnapshot();
+    const snapshot = new GameSession(fakeAi(), storage, fakeAnalysis()).getSnapshot();
     expect(snapshot.settings).toBeNull();
     expect(snapshot.moveList).toEqual([]);
   });
@@ -166,7 +165,7 @@ describe('GameSession', () => {
 
     // It stays finished after a reload, even though the moves alone do not end it.
     session.stop();
-    const reloaded = new GameSession(fakeAi(), storage).getSnapshot();
+    const reloaded = new GameSession(fakeAi(), storage, fakeAnalysis()).getSnapshot();
     expect(reloaded.result).toEqual({ winner: -1, reason: 'resignation' });
     expect(reloaded.canUndo).toBe(false);
     expect(reloaded.humanMoves).toEqual([]);
@@ -177,8 +176,38 @@ describe('GameSession', () => {
     session.offerDraw();
     await until(session, (s) => !s.thinking);
     session.stop();
-    const reloaded = new GameSession(fakeAi(), storage).getSnapshot();
+    const reloaded = new GameSession(fakeAi(), storage, fakeAnalysis()).getSnapshot();
     expect(reloaded.result).toEqual({ winner: null, reason: 'agreement' });
+  });
+
+  it("analyses the position live, from White's point of view", async () => {
+    const { session } = started();
+    const first = await until(session, (s) => (s.evaluation?.depth ?? 0) >= 2);
+    expect(first.evaluation?.final).toBe(false);
+    // The opening is balanced.
+    expect(Math.abs(first.evaluation?.score ?? 999)).toBeLessThan(60);
+    session.clickSquare(sq('c3'));
+    session.clickSquare(sq('c4'));
+    await until(session, (s) => s.moveList.length === 2 && (s.evaluation?.depth ?? 0) >= 2);
+  });
+
+  it('can hide the evaluation, which also stops the analysis', async () => {
+    const { session, storage } = started();
+    await until(session, (s) => s.evaluation !== null);
+    session.toggleEvaluation();
+    expect(session.getSnapshot().showEvaluation).toBe(false);
+    expect(session.getSnapshot().evaluation).toBeNull();
+    session.stop();
+    expect(new GameSession(fakeAi(), storage, fakeAnalysis()).getSnapshot().showEvaluation).toBe(
+      false,
+    );
+  });
+
+  it('shows the result instead of an evaluation once the game is over', () => {
+    const { session } = started();
+    session.resign();
+    expect(session.getSnapshot().evaluation).toMatchObject({ final: true });
+    expect(session.getSnapshot().evaluation?.score).toBeLessThan(0);
   });
 
   it('ends the game on resignation', () => {

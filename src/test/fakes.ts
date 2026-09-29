@@ -1,5 +1,12 @@
-import type { AiRequest, AiResponse, WorkerLike } from '../ai';
-import { AiClient, Searcher, handleRequest } from '../ai';
+import type {
+  AiRequest,
+  AiResponse,
+  AnalysisRequest,
+  AnalysisUpdate,
+  AnalysisWorkerLike,
+  WorkerLike,
+} from '../ai';
+import { AiClient, AnalysisClient, Searcher, analyse, handleRequest } from '../ai';
 
 /** Runs requests through the real AI synchronously, in place of a Web Worker. */
 export class FakeWorker implements WorkerLike {
@@ -24,6 +31,36 @@ export class FakeWorker implements WorkerLike {
 }
 
 export const fakeAi = (): AiClient => new AiClient(() => new FakeWorker());
+
+/** Runs the real live analysis, kept shallow so tests stay fast. */
+export class FakeAnalysisWorker implements AnalysisWorkerLike {
+  onmessage: ((event: MessageEvent<AnalysisUpdate>) => void) | null = null;
+  terminated = false;
+  readonly requests: AnalysisRequest[] = [];
+  #current = 0;
+  readonly #searcher = new Searcher(16);
+
+  postMessage(message: AnalysisRequest): void {
+    this.requests.push(message);
+    this.#current = message.type === 'analyse' ? message.id : 0;
+    if (message.type !== 'analyse' || this.terminated) return;
+    void analyse(
+      this.#searcher,
+      { ...message, maxDepth: Math.min(message.maxDepth, 3) },
+      (update) => {
+        if (!this.terminated) this.onmessage?.({ data: update } as MessageEvent<AnalysisUpdate>);
+      },
+      () => this.#current === message.id && !this.terminated,
+    );
+  }
+
+  terminate(): void {
+    this.terminated = true;
+  }
+}
+
+export const fakeAnalysis = (): AnalysisClient =>
+  new AnalysisClient(() => new FakeAnalysisWorker());
 
 /** An in-memory `Storage`. */
 export class MemoryStorage implements Storage {

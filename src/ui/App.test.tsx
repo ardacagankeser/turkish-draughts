@@ -3,7 +3,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
-import { MemoryStorage, fakeAi } from '../test/fakes';
+import { MemoryStorage, fakeAi, fakeAnalysis } from '../test/fakes';
 import { App } from './App';
 import { MESSAGES, detectLanguage, translator } from './i18n';
 
@@ -14,7 +14,7 @@ function renderApp(storage = new MemoryStorage()) {
   return {
     user: userEvent.setup(),
     storage,
-    ...render(<App createAi={fakeAi} storage={storage} />),
+    ...render(<App createAi={fakeAi} createAnalysis={fakeAnalysis} storage={storage} />),
   };
 }
 
@@ -55,6 +55,21 @@ describe('App', () => {
     // From a1: two squares up to a3, select it, one more up to a4, play.
     await user.keyboard('{ArrowUp}{ArrowUp}{Enter}{ArrowUp}{Enter}');
     expect(screen.getByText('a3-a4')).toBeInTheDocument();
+  });
+
+  it('shows an evaluation bar that can be hidden, and the result at the end', async () => {
+    const { user } = renderApp();
+    await user.click(screen.getByRole('button', { name: 'Start game' }));
+    const bar = screen.getByRole('meter', { name: 'Evaluation bar' });
+    await waitFor(() => {
+      expect(bar).toHaveAttribute('aria-valuetext', expect.stringMatching(/equal|better/));
+    });
+    await user.click(screen.getByRole('button', { name: 'Evaluation bar' }));
+    expect(screen.queryByRole('meter')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Evaluation bar' }));
+    await user.click(screen.getByRole('button', { name: 'Resign' }));
+    await user.click(screen.getByRole('button', { name: 'Are you sure?' }));
+    expect(screen.getByRole('meter')).toHaveAttribute('aria-valuenow', '0');
   });
 
   it('switches language', async () => {

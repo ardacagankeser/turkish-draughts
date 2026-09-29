@@ -20,7 +20,8 @@
     "test:watch": "vitest",
     "coverage": "vitest run --coverage",
     "bench": "tsx bench/match.ts",
-    "tablebase": "tsx tools/generate-tablebase.ts"
+    "tablebase": "tsx tools/generate-tablebase.ts",
+    "calibrate": "tsx bench/calibrate.ts"
   },
   "dependencies": {
     "react": "^19.3.0",

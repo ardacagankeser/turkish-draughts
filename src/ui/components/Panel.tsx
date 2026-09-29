@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Color } from '../../engine';
-import { mateIn } from '../../ai';
+import { formatEvaluation } from '../evaluation';
 import type { GameSession, Snapshot } from '../session';
 import { levelKey, reasonKey, useI18n } from '../i18n';
 
@@ -8,14 +8,6 @@ interface PanelProps {
   readonly game: Snapshot;
   readonly session: GameSession;
   readonly onNewGame: () => void;
-}
-
-function formatScore(score: number, forHuman: boolean): string {
-  const value = forHuman ? -score : score;
-  const mate = mateIn(value);
-  if (mate !== null) return mate > 0 ? `M${mate}` : `−M${-mate}`;
-  const pawns = (value / 100).toFixed(2);
-  return value > 0 ? `+${pawns}` : pawns.replace('-', '−');
 }
 
 export function Panel({ game, session, onNewGame }: PanelProps) {
@@ -131,6 +123,9 @@ export function Panel({ game, session, onNewGame }: PanelProps) {
         <button type="button" onClick={session.flip}>
           {t('flip')}
         </button>
+        <button type="button" aria-pressed={game.showEvaluation} onClick={session.toggleEvaluation}>
+          {t('evalBar')}
+        </button>
       </section>
 
       <section className="moves">
@@ -149,10 +144,13 @@ export function Panel({ game, session, onNewGame }: PanelProps) {
         )}
       </section>
 
-      {game.engine && (
+      {game.evaluation && !game.evaluation.final && (
         <p className="engine">
-          {t('engineInfo')}: {t('depth', { n: game.engine.depth })} ·{' '}
-          {formatScore(game.engine.score, true)}
+          {t('analysis')}: {t('depth', { n: game.evaluation.depth })} ·{' '}
+          {formatEvaluation(game.evaluation)}
+          {game.evaluation.pv.length > 0 && (
+            <span className="pv"> · {game.evaluation.pv.slice(0, 4).join(' ')}</span>
+          )}
         </p>
       )}
     </aside>
