@@ -210,6 +210,87 @@ describe('GameSession', () => {
     expect(session.getSnapshot().evaluation?.score).toBeLessThan(0);
   });
 
+  describe('browsing earlier moves', () => {
+    async function afterTwoMoves() {
+      const setup = started();
+      setup.session.clickSquare(sq('c3'));
+      setup.session.clickSquare(sq('c4'));
+      await until(setup.session, (s) => s.moveList.length === 2 && !s.thinking);
+      return setup;
+    }
+
+    it('shows an earlier position read-only and steps back to the live one', async () => {
+      const { session } = await afterTwoMoves();
+      const live = session.getSnapshot();
+      session.showFirst();
+      const start = session.getSnapshot();
+      expect(start.browsing).toBe(true);
+      expect(start.moveNumber).toBe(0);
+      expect(start.liveMoveNumber).toBe(2);
+      expect(start.lastMove).toBeNull();
+      expect(start.pieces.some((p) => p.square === sq('c3'))).toBe(true);
+      expect(start.humanMoves).toEqual([]);
+
+      // Moves cannot be played on an earlier position.
+      session.clickSquare(sq('d3'));
+      expect(session.getSnapshot().selection).toBeNull();
+
+      // One step forward keeps the moving piece's identity, so it can be animated.
+      const c3 = start.pieces.find((p) => p.square === sq('c3'));
+      session.showNext();
+      const first = session.getSnapshot();
+      expect(first.moveNumber).toBe(1);
+      expect(first.lastMove?.to).toBe(sq('c4'));
+      expect(first.pieces.find((p) => p.square === sq('c4'))?.id).toBe(c3?.id);
+
+      session.showLive();
+      const back = session.getSnapshot();
+      expect(back.browsing).toBe(false);
+      expect(back.pieces).toBe(live.pieces);
+      expect(back.humanMoves.length).toBeGreaterThan(0);
+    });
+
+    it('clamps out-of-range requests and ignores no-ops', async () => {
+      const { session } = await afterTwoMoves();
+      const before = session.getSnapshot();
+      session.showNext();
+      expect(session.getSnapshot()).toBe(before);
+      session.showPly(-5);
+      expect(session.getSnapshot().moveNumber).toBe(0);
+      session.showPly(99);
+      expect(session.getSnapshot().browsing).toBe(false);
+    });
+
+    it('keeps the shown position while the computer moves, and counts the new move', async () => {
+      const { session } = started();
+      session.clickSquare(sq('c3'));
+      session.clickSquare(sq('c4'));
+      session.showFirst();
+      const browsing = await until(session, (s) => s.liveMoveNumber === 2);
+      expect(browsing.moveNumber).toBe(0);
+      expect(browsing.missedMoves).toBe(1);
+      session.showLive();
+      expect(session.getSnapshot().missedMoves).toBe(0);
+    });
+
+    it('leaves browsing when a move is taken back', async () => {
+      const { session } = await afterTwoMoves();
+      session.showFirst();
+      session.undo();
+      expect(session.getSnapshot().browsing).toBe(false);
+      expect(session.getSnapshot().moveList).toEqual([]);
+    });
+
+    it('analyses earlier positions of a finished game', async () => {
+      const { session } = await afterTwoMoves();
+      session.resign();
+      expect(session.getSnapshot().evaluation?.final).toBe(true);
+      session.showPrevious();
+      const snapshot = await until(session, (s) => s.evaluation?.final === false);
+      expect(snapshot.moveNumber).toBe(1);
+    });
+  });
+
   it('ends the game on resignation', () => {
     const { session } = started();
     session.resign();

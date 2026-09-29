@@ -72,6 +72,35 @@ describe('App', () => {
     expect(screen.getByRole('meter')).toHaveAttribute('aria-valuenow', '0');
   });
 
+  it('browses the moves by clicking the list and with the keyboard', async () => {
+    const { user } = renderApp();
+    await user.click(screen.getByRole('button', { name: 'Start game' }));
+    await user.click(screen.getByRole('gridcell', { name: 'c3, white man' }));
+    await user.click(screen.getByRole('gridcell', { name: 'c4' }));
+    await waitFor(
+      () => {
+        expect(screen.getByText('Your move')).toBeInTheDocument();
+      },
+      { timeout: 3000 },
+    );
+
+    await user.click(screen.getByRole('button', { name: 'c3-c4' }));
+    expect(screen.getByRole('button', { name: 'c3-c4' })).toHaveAttribute('aria-current', 'true');
+    expect(screen.getByRole('status')).toHaveTextContent('Viewing move 1 of 2');
+    // The board shows the position after White's first move and is read-only.
+    expect(screen.getByRole('gridcell', { name: 'c4, white man' })).toBeInTheDocument();
+
+    await user.keyboard('{ArrowLeft}');
+    expect(screen.getByRole('gridcell', { name: 'c3, white man' })).toBeInTheDocument();
+    await user.keyboard('{End}');
+    expect(screen.queryByRole('button', { name: 'Back to the game' })).not.toBeInTheDocument();
+    expect(screen.getByText('Your move')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Start position' }));
+    await user.click(screen.getByRole('button', { name: 'Back to the game' }));
+    expect(screen.getByText('Your move')).toBeInTheDocument();
+  });
+
   it('switches language', async () => {
     const { user } = renderApp();
     await user.click(screen.getByRole('button', { name: 'TR' }));

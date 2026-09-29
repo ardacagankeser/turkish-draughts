@@ -772,3 +772,69 @@ button.danger {
   border-color: var(--accent);
   color: var(--accent);
 }
+
+/* Move list navigation ---------------------------------------------------- */
+.moves .move {
+  font: inherit;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  padding: 1px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.moves .move:hover {
+  background: var(--surface-2);
+}
+
+.moves .move[aria-current='true'] {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.navigation {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.navigation button {
+  padding: 6px 0;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  font-size: 0.9rem;
+}
+
+.navigation button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.back-to-game {
+  width: 100%;
+  margin-top: 8px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--accent);
+  font-weight: 600;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+
+.badge {
+  font-size: 0.75rem;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--accent-text);
+  color: var(--accent);
+}
+
+/* A board showing an earlier position is read-only. */
+.board-wrap.browsing .board {
+  filter: saturate(0.75);
+}
