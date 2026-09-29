@@ -86,6 +86,16 @@ export class GameSession {
     } catch {
       this.#game = new Game();
     }
+    // Endings that the moves alone do not reproduce.
+    const ending = saved.ending;
+    if (ending && !this.#game.isOver) {
+      if (ending.reason === 'agreement') this.#game.agreeDraw();
+      else if (ending.winner !== null) {
+        const loser = opponent(ending.winner);
+        if (ending.reason === 'resignation') this.#game.resign(loser);
+        else this.#game.timeout(loser);
+      }
+    }
     this.#settings = saved.settings;
     this.#drawOffers = saved.drawOffers;
     this.#flipped = saved.flipped;
@@ -141,7 +151,9 @@ export class GameSession {
     this.#reset();
   };
 
+  /** Takes back the last move pair. A finished game is final and cannot be taken back. */
   readonly undo = (): void => {
+    if (this.#game.isOver) return;
     this.#cancelAi();
     const human = this.#settings?.human ?? 1;
     // Take back the AI's reply and the human's move, back to the human's turn.
@@ -198,6 +210,7 @@ export class GameSession {
     this.#cancelAi();
     this.#game.resign(this.#settings.human);
     this.#resultId++;
+    this.#save();
     this.#emit();
   };
 
@@ -303,10 +316,19 @@ export class GameSession {
   }
 
   #save(): void {
+    const result = this.#game.result;
+    const ending =
+      result &&
+      (result.reason === 'resignation' ||
+        result.reason === 'agreement' ||
+        result.reason === 'timeout')
+        ? { reason: result.reason, winner: result.winner }
+        : null;
     save(
       {
         settings: this.#settings,
         moves: this.#moves(),
+        ending,
         drawOffers: this.#drawOffers,
         flipped: this.#flipped,
       },
@@ -344,7 +366,7 @@ export class GameSession {
       notice: this.#notice,
       engine: this.#engine,
       flipped: this.#flipped,
-      canUndo: this.#settings !== null && humanPlies > 0,
+      canUndo: this.#settings !== null && !game.isOver && humanPlies > 0,
     };
   }
 }
