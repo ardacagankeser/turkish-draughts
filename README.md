@@ -51,4 +51,12 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-[MIT](LICENSE)
+The source code is available under the [PolyForm Noncommercial License 1.0.0](LICENSE).
+You may read, run, study and change it for any **noncommercial** purpose: personal use,
+learning, research and teaching. **Commercial use is reserved**, including publishing the game or
+a derivative in an app store or on a website that earns money. For a commercial license, contact the author.
+
+The name "Turkish Draughts", the logo and the graphic and sound assets are **not** covered by the
+code license. All rights are reserved.
+
+Versions published before this change remain available under the MIT license they were released with.

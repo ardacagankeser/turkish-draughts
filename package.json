@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "description": "Turkish Draughts (Dama) against a computer opponent, in the browser.",
-  "license": "MIT",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "engines": {
     "node": ">=24"
   },

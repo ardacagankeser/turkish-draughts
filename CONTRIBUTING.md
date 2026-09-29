@@ -24,6 +24,13 @@ fix(ui): keep selection when the clock ticks
 Types: `feat`, `fix`, `perf`, `refactor`, `test`, `docs`, `ci`, `build`, `chore`.
 Add `!` after the type (`feat!:`) for breaking changes.
 
+## Licensing of contributions
+
+The project is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE). By submitting a
+contribution, you agree that it is licensed under the same terms. You also grant the maintainer the
+right to license it under other terms, including commercial ones, so that the project can offer
+commercial licenses.
+
 ## Rules changes
 
 Any change to game behaviour must update [docs/RULES.md](docs/RULES.md) and add tests in the same PR.
