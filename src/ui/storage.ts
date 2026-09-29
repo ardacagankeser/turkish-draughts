@@ -7,11 +7,21 @@ export interface Settings {
   readonly level: Level;
 }
 
+/**
+ * How a game ended when the result cannot be recomputed from the moves:
+ * a resignation, an agreed draw or a lost clock.
+ */
+export interface Ending {
+  readonly reason: 'resignation' | 'agreement' | 'timeout';
+  readonly winner: Color | null;
+}
+
 /** What is kept between visits: the game in progress and a few preferences. */
 export interface SavedState {
   readonly settings: Settings | null;
   /** Moves of the current game in landing notation. */
   readonly moves: readonly string[];
+  readonly ending: Ending | null;
   readonly drawOffers: number;
   readonly flipped: boolean;
 }
@@ -22,6 +32,7 @@ const LANGUAGE_KEY = 'turkish-draughts:language';
 export const EMPTY_STATE: SavedState = {
   settings: null,
   moves: [],
+  ending: null,
   drawOffers: 0,
   flipped: false,
 };
@@ -35,6 +46,16 @@ function parseSettings(value: unknown): Settings | null {
   if (human !== 1 && human !== -1) return null;
   const known = LEVELS.find((candidate) => candidate === level);
   return known ? { human, level: known } : null;
+}
+
+function parseEnding(value: unknown): Ending | null {
+  if (!isRecord(value)) return null;
+  const { reason, winner } = value;
+  if (reason === 'agreement') return { reason, winner: null };
+  if ((reason === 'resignation' || reason === 'timeout') && (winner === 1 || winner === -1)) {
+    return { reason, winner };
+  }
+  return null;
 }
 
 /**
@@ -52,6 +73,7 @@ export function load(storage: Storage = globalThis.localStorage): SavedState {
       moves: Array.isArray(data.moves)
         ? data.moves.filter((move): move is string => typeof move === 'string')
         : [],
+      ending: parseEnding(data.ending),
       drawOffers: typeof data.drawOffers === 'number' ? data.drawOffers : 0,
       flipped: data.flipped === true,
     };

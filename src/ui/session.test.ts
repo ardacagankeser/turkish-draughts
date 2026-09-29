@@ -142,6 +142,45 @@ describe('GameSession', () => {
     expect(snapshot.resultId).toBe(1);
   });
 
+  it('treats a finished game as final', async () => {
+    const { session, storage } = started();
+    session.clickSquare(sq('c3'));
+    session.clickSquare(sq('c4'));
+    await until(session, (s) => s.moveList.length === 2);
+    session.resign();
+    const over = session.getSnapshot();
+    expect(over.canUndo).toBe(false);
+
+    // None of these may change a finished game.
+    session.undo();
+    session.offerDraw();
+    session.requestHint();
+    session.clickSquare(sq('d3'));
+    session.resign();
+    const after = session.getSnapshot();
+    expect(after.moveList).toEqual(over.moveList);
+    expect(after.result).toEqual({ winner: -1, reason: 'resignation' });
+    expect(after.drawOffersLeft).toBe(2);
+    expect(after.thinking).toBe(false);
+    expect(after.resultId).toBe(over.resultId);
+
+    // It stays finished after a reload, even though the moves alone do not end it.
+    session.stop();
+    const reloaded = new GameSession(fakeAi(), storage).getSnapshot();
+    expect(reloaded.result).toEqual({ winner: -1, reason: 'resignation' });
+    expect(reloaded.canUndo).toBe(false);
+    expect(reloaded.humanMoves).toEqual([]);
+  });
+
+  it('keeps an agreed draw after a reload', async () => {
+    const { session, storage } = started();
+    session.offerDraw();
+    await until(session, (s) => !s.thinking);
+    session.stop();
+    const reloaded = new GameSession(fakeAi(), storage).getSnapshot();
+    expect(reloaded.result).toEqual({ winner: null, reason: 'agreement' });
+  });
+
   it('ends the game on resignation', () => {
     const { session } = started();
     session.resign();

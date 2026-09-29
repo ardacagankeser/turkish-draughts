@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Color } from '../../engine';
 import { mateIn } from '../../ai';
 import type { GameSession, Snapshot } from '../session';
-import { levelKey, useI18n } from '../i18n';
+import { levelKey, reasonKey, useI18n } from '../i18n';
 
 interface PanelProps {
   readonly game: Snapshot;
@@ -47,8 +47,15 @@ export function Panel({ game, session, onNewGame }: PanelProps) {
   const capturedBy = (color: Color) => 16 - (color === 1 ? blackPieces : whitePieces);
 
   let status = '';
-  if (over) status = '';
-  else if (game.thinking && game.turn !== human) status = t('thinking');
+  if (game.result) {
+    const outcome =
+      game.result.winner === null
+        ? t('draw')
+        : game.result.winner === human
+          ? t('youWin')
+          : t('youLose');
+    status = `${t('gameOver')} — ${outcome} · ${t(reasonKey(game.result))}`;
+  } else if (game.thinking && game.turn !== human) status = t('thinking');
   else if (game.turn === human) {
     if (game.selection && game.selection.path.length > 0) status = t('continueChain');
     else if ((game.humanMoves[0]?.captures.length ?? 0) > 0) status = t('mustCapture');
@@ -85,7 +92,7 @@ export function Panel({ game, session, onNewGame }: PanelProps) {
         {player(human)}
       </section>
 
-      <p className="status" role="status" aria-live="polite">
+      <p className={`status${over ? ' over' : ''}`} role="status" aria-live="polite">
         {game.thinking && game.turn !== human && <span className="spinner" aria-hidden="true" />}
         {status}
       </p>

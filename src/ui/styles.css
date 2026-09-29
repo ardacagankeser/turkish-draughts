@@ -658,3 +658,8 @@ button.danger {
   gap: 8px;
   margin-top: 8px;
 }
+
+.status.over {
+  border-color: var(--accent);
+  font-weight: 600;
+}
