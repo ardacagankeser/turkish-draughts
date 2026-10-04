@@ -385,17 +385,18 @@ export class GameSession {
    * with the bar hidden (or no game yet) nothing is analysed.
    */
   #refreshEvaluation(): void {
+    // Hidden means hidden, also once the game is over.
+    if (!this.#showEvaluation || !this.#settings) {
+      this.#analysis.stop();
+      this.#evaluation = null;
+      return;
+    }
     // An earlier position of a finished game is analysed like any other.
     const result = this.#view ? null : this.#game.result;
     if (result) {
       this.#analysis.stop();
       const score = result.winner === null ? 0 : result.winner * MATE;
       this.#evaluation = { score, depth: 0, pv: [], final: true };
-      return;
-    }
-    if (!this.#showEvaluation || !this.#settings) {
-      this.#analysis.stop();
-      this.#evaluation = null;
       return;
     }
     // The previous evaluation stays until the first update, so the bar moves smoothly.
