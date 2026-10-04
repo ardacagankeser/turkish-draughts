@@ -296,6 +296,59 @@ describe('GameSession', () => {
     });
   });
 
+  describe('premoves', () => {
+    it('queues a move while the computer thinks and plays it if still legal', async () => {
+      const { session } = started();
+      session.clickSquare(sq('c3'));
+      session.clickSquare(sq('c4'));
+      expect(session.getSnapshot().premoveEnabled).toBe(true);
+
+      session.clickSquare(sq('h3'));
+      expect(session.getSnapshot().premoveFrom).toBe(sq('h3'));
+      expect(session.getSnapshot().premoveTargets).toContain(sq('h4'));
+      session.clickSquare(sq('h4'));
+      expect(session.getSnapshot().premove).toEqual({ from: sq('h3'), to: sq('h4') });
+
+      const afterAi = await until(session, (s) => s.moveList.length >= 2 && !s.thinking);
+      // The reply may force a capture, which makes the premove illegal: then it is dropped.
+      const legal = afterAi.humanMoves.some((m) => m.from === sq('h3') && m.to === sq('h4'));
+      if (legal) {
+        const played = await until(session, (s) => s.moveList.length === 3);
+        expect(played.moveList[2]).toBe('h3-h4');
+      } else {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        expect(session.getSnapshot().moveList).toHaveLength(2);
+      }
+      expect(session.getSnapshot().premove).toBeNull();
+    });
+
+    it('can be cancelled, and is dropped when browsing', () => {
+      const { session } = started();
+      session.clickSquare(sq('c3'));
+      session.clickSquare(sq('c4'));
+      session.clickSquare(sq('h3'));
+      session.clickSquare(sq('h4'));
+      session.cancelPremove();
+      expect(session.getSnapshot().premove).toBeNull();
+
+      session.clickSquare(sq('h3'));
+      session.clickSquare(sq('h4'));
+      session.showFirst();
+      expect(session.getSnapshot().premove).toBeNull();
+      expect(session.getSnapshot().premoveEnabled).toBe(false);
+    });
+
+    it('ignores empty squares and opposing pieces when nothing is picked', () => {
+      const { session } = started();
+      session.clickSquare(sq('c3'));
+      session.clickSquare(sq('c4'));
+      session.clickSquare(sq('d5'));
+      session.clickSquare(sq('e6'));
+      expect(session.getSnapshot().premoveFrom).toBeNull();
+      expect(session.getSnapshot().premove).toBeNull();
+    });
+  });
+
   it('ends the game on resignation', () => {
     const { session } = started();
     session.resign();

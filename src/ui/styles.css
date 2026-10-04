@@ -838,3 +838,46 @@ button.danger {
 .board-wrap.browsing .board {
   filter: saturate(0.75);
 }
+
+/* Drag and drop, premoves, ghosts and drawings ---------------------------- */
+.square.draggable {
+  cursor: grab;
+  /* Touching a piece drags it instead of scrolling the page; the rest of the board scrolls. */
+  touch-action: none;
+}
+
+.piece.dragging {
+  z-index: 5;
+  scale: 1.12;
+  filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.35));
+  cursor: grabbing;
+}
+
+/* Pieces jumped so far while a capture chain is being chosen. */
+.piece.ghost {
+  opacity: 0.35;
+}
+
+.square.premove-from {
+  background: rgba(31, 95, 191, 0.45);
+}
+
+.square.premove {
+  background: rgba(31, 95, 191, 0.35);
+}
+
+.square.premove-target::after {
+  content: '';
+  position: absolute;
+  inset: 40%;
+  border-radius: 50%;
+  background: rgba(31, 95, 191, 0.55);
+}
+
+.drawings {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}

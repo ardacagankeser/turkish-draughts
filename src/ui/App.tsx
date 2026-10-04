@@ -115,7 +115,14 @@ export function App({ createAi, createAnalysis, storage = globalThis.localStorag
                 selection={game.selection}
                 hint={game.hint}
                 flipped={game.flipped}
+                human={game.settings?.human ?? 1}
+                premoveEnabled={game.premoveEnabled}
+                premove={game.premove}
+                premoveFrom={game.premoveFrom}
+                premoveTargets={game.premoveTargets}
+                ghosts={game.ghosts}
                 onSquare={session.clickSquare}
+                onCancelPremove={session.cancelPremove}
               />
               {game.notice && (
                 <div className={`notice ${game.notice}`} role="status">

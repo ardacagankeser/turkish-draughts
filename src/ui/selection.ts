@@ -1,4 +1,4 @@
-import type { Move, Square } from '../engine';
+import type { Move, Piece, Square } from '../engine';
 
 /**
  * Click-to-move state. A move is chosen by picking a piece and then its destination.
@@ -87,4 +87,40 @@ export function click(
   }
 
   return reselect();
+}
+
+/**
+ * Squares a piece could be premoved to while the opponent thinks, as on lichess: its
+ * movement pattern on an empty board (one or two steps forward or sideways for a man,
+ * covering captures; its whole rank and file for a king). Whether the premove is legal is
+ * only known after the opponent's move, when it is checked against the legal moves.
+ */
+export function premoveTargets(piece: Piece, from: Square): Set<Square> {
+  const targets = new Set<Square>();
+  const rank = from >> 3;
+  const file = from & 7;
+  const add = (r: number, f: number) => {
+    if (r >= 0 && r < 8 && f >= 0 && f < 8) targets.add(r * 8 + f);
+  };
+  if (piece === 2 || piece === -2) {
+    for (let i = 0; i < 8; i++) {
+      if (i !== rank) add(i, file);
+      if (i !== file) add(rank, i);
+    }
+    return targets;
+  }
+  const forward = piece > 0 ? 1 : -1;
+  for (const steps of [1, 2]) {
+    add(rank + forward * steps, file);
+    add(rank, file + steps);
+    add(rank, file - steps);
+  }
+  return targets;
+}
+
+/** Pieces already jumped by the part of a capture chain chosen so far, shown as ghosts. */
+export function jumpedSoFar(moves: readonly Move[], selection: Selection): Square[] {
+  if (selection.path.length === 0) return [];
+  // Landing squares fix the captured pieces: the same prefix means the same captures.
+  return candidates(moves, selection)[0]?.captures.slice(0, selection.path.length) ?? [];
 }

@@ -1,16 +1,32 @@
 import type { Color, GameResult, Move, Square } from '../engine';
-import { Game, INITIAL_FEN, MAX_DRAW_OFFERS, findMove, moveToNotation, opponent } from '../engine';
+import {
+  Game,
+  INITIAL_FEN,
+  MAX_DRAW_OFFERS,
+  colorOf,
+  findMove,
+  moveToNotation,
+  opponent,
+} from '../engine';
 import type { AiClient, Level } from '../ai';
 import { AnalysisClient, MATE } from '../ai';
 import type { UiPiece } from './pieces';
 import { applyMove, piecesFromBoard } from './pieces';
 import type { Selection } from './selection';
-import { click } from './selection';
+import { click, jumpedSoFar, premoveTargets } from './selection';
 import type { Settings } from './storage';
 import { load, save } from './storage';
 
 /** The AI never answers faster than this, so its move can be seen arriving. */
 export const MIN_AI_DELAY_MS = 450;
+/** A queued premove is played this long after the opponent's move, so both can be seen. */
+export const PREMOVE_DELAY_MS = 180;
+
+/** A move queued while the computer thinks, played if it is legal once it is our turn. */
+export interface Premove {
+  readonly from: Square;
+  readonly to: Square;
+}
 const NOTICE_MS = 2200;
 const HINT_LEVEL: Level = 'hard';
 
@@ -55,6 +71,14 @@ export interface Snapshot {
   readonly showEvaluation: boolean;
   readonly flipped: boolean;
   readonly canUndo: boolean;
+  /** Premoves can be queued now: the computer is thinking in the live game. */
+  readonly premoveEnabled: boolean;
+  readonly premove: Premove | null;
+  /** The piece picked for a premove, and where it could go. */
+  readonly premoveFrom: Square | null;
+  readonly premoveTargets: readonly Square[];
+  /** Pieces jumped by the part of a capture chain chosen so far (shown as ghosts). */
+  readonly ghosts: readonly Square[];
 }
 
 type Listener = () => void;
@@ -89,6 +113,9 @@ export class GameSession {
   #view: View | null = null;
   #missedMoves = 0;
   #selection: Selection | null = null;
+  #premove: Premove | null = null;
+  #premoveFrom: Square | null = null;
+  #premoveTimer: ReturnType<typeof setTimeout> | undefined;
   #thinking = false;
   #hint: Move | null = null;
   #drawOffers: number;
@@ -158,6 +185,7 @@ export class GameSession {
     this.#token++;
     this.#ai.dispose();
     this.#analysis.dispose();
+    clearTimeout(this.#premoveTimer);
     clearTimeout(this.#noticeTimer);
     this.#thinking = false;
   };
@@ -165,6 +193,10 @@ export class GameSession {
   // --- Actions ----------------------------------------------------------------
 
   readonly clickSquare = (square: Square): void => {
+    if (this.#canPremove()) {
+      this.#premoveClick(square);
+      return;
+    }
     if (!this.#canPlay()) return;
     const result = click(this.#game.legalMoves, this.#selection, square);
     if (result.type === 'play') this.#commit(result.move);
@@ -251,6 +283,14 @@ export class GameSession {
     this.#emit();
   };
 
+  /** Clears a queued premove and a premove being picked. */
+  readonly cancelPremove = (): void => {
+    if (this.#premove === null && this.#premoveFrom === null) return;
+    this.#premove = null;
+    this.#premoveFrom = null;
+    this.#emit();
+  };
+
   // --- Browsing earlier moves ----------------------------------------------------
 
   /**
@@ -274,6 +314,9 @@ export class GameSession {
     }
     this.#selection = null;
     this.#hint = null;
+    // A premove belongs to the live position; browsing drops it.
+    this.#premove = null;
+    this.#premoveFrom = null;
     this.#refreshEvaluation();
     this.#emit();
   };
@@ -324,6 +367,56 @@ export class GameSession {
     return this.#humanToMove() && this.#view === null;
   }
 
+  /** While the computer thinks, clicks pick a premove instead of a move. */
+  #canPremove(): boolean {
+    const settings = this.#settings;
+    return (
+      settings !== null &&
+      this.#thinking &&
+      this.#view === null &&
+      !this.#game.isOver &&
+      this.#game.turn !== settings.human
+    );
+  }
+
+  #premoveClick(square: Square): void {
+    const human = this.#settings?.human ?? 1;
+    const board = this.#game.board;
+    const own = colorOf(board.get(square)) === human;
+    const from = this.#premoveFrom;
+    if (from !== null && square !== from && premoveTargets(board.get(from), from).has(square)) {
+      this.#premove = { from, to: square };
+      this.#premoveFrom = null;
+    } else if (own && square !== from) {
+      this.#premoveFrom = square;
+      this.#premove = null;
+    } else {
+      // Clicking the picked piece again, or anywhere else, cancels.
+      this.#premoveFrom = null;
+      this.#premove = null;
+    }
+    this.#emit();
+  }
+
+  /** Plays the queued premove if it is legal now; otherwise it is dropped silently. */
+  #tryPremove(): void {
+    const premove = this.#premove;
+    this.#premoveFrom = null;
+    if (!premove) return;
+    this.#premove = null;
+    if (!this.#canPlay()) return;
+    const matching = this.#game.legalMoves.filter(
+      (move) => move.from === premove.from && move.to === premove.to,
+    );
+    const [move] = matching;
+    if (matching.length !== 1 || !move) return;
+    const ply = this.#game.history.length;
+    clearTimeout(this.#premoveTimer);
+    this.#premoveTimer = setTimeout(() => {
+      if (this.#canPlay() && this.#game.history.length === ply) this.#commit(move);
+    }, PREMOVE_DELAY_MS);
+  }
+
   #displayedPly(): number {
     return this.#view?.ply ?? this.#game.history.length;
   }
@@ -361,12 +454,17 @@ export class GameSession {
     if (this.#view) this.#missedMoves++;
     else this.#refreshEvaluation();
     this.#save();
+    // The computer's move: play a queued premove if it is still legal.
+    if (played === this.#game.history.at(-1) && this.#canPlay()) this.#tryPremove();
     this.#emit();
     this.#maybeAiMove();
   }
 
   /** Rebuilds the board without animation (new game, undo). */
   #reset(): void {
+    clearTimeout(this.#premoveTimer);
+    this.#premove = null;
+    this.#premoveFrom = null;
     this.#view = null;
     this.#missedMoves = 0;
     this.#pieces = piecesFromBoard(this.#game.board);
@@ -518,6 +616,15 @@ export class GameSession {
       showEvaluation: this.#showEvaluation,
       flipped: this.#flipped,
       canUndo: this.#settings !== null && !game.isOver && humanPlies > 0,
+      premoveEnabled: this.#canPremove(),
+      premove: this.#premove,
+      premoveFrom: this.#premoveFrom,
+      premoveTargets:
+        this.#premoveFrom === null
+          ? []
+          : [...premoveTargets(game.board.get(this.#premoveFrom), this.#premoveFrom)],
+      ghosts:
+        this.#selection && humanMoves.length > 0 ? jumpedSoFar(humanMoves, this.#selection) : [],
     };
   }
 }
