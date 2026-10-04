@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
 import { MemoryStorage, fakeAi, fakeAnalysis } from '../test/fakes';
@@ -118,6 +118,33 @@ describe('App', () => {
     await user.click(screen.getByRole('button', { name: 'Start position' }));
     await user.click(screen.getByRole('button', { name: 'Back to the game' }));
     expect(screen.getByText('Your move')).toBeInTheDocument();
+  });
+
+  it('plays a move by dragging a piece and dropping it', async () => {
+    const { user } = renderApp();
+    await user.click(screen.getByRole('button', { name: 'Start game' }));
+    const from = screen.getByRole('gridcell', { name: 'c3, white man' });
+    const to = screen.getByRole('gridcell', { name: 'c4' });
+    fireEvent.pointerDown(from, { button: 0, pointerId: 1, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(from, { button: 0, pointerId: 1, clientX: 40, clientY: -20 });
+    fireEvent.pointerUp(to, { button: 0, pointerId: 1, clientX: 40, clientY: -20 });
+    expect(screen.getByText('c3-c4')).toBeInTheDocument();
+  });
+
+  it('draws arrows and circles with the right button, and clears them with a click', async () => {
+    const { user, container } = renderApp();
+    await user.click(screen.getByRole('button', { name: 'Start game' }));
+    const e3 = screen.getByRole('gridcell', { name: 'e3, white man' });
+    const e5 = screen.getByRole('gridcell', { name: 'e5' });
+    fireEvent.pointerDown(e3, { button: 2, pointerId: 2 });
+    fireEvent.pointerUp(e5, { button: 2, pointerId: 2 });
+    fireEvent.pointerDown(e5, { button: 2, pointerId: 2, shiftKey: true });
+    fireEvent.pointerUp(e5, { button: 2, pointerId: 2, shiftKey: true });
+    expect(container.querySelectorAll('.drawings polyline')).toHaveLength(1);
+    expect(container.querySelectorAll('.drawings circle')).toHaveLength(1);
+    fireEvent.pointerDown(e5, { button: 0, pointerId: 3 });
+    fireEvent.pointerUp(e5, { button: 0, pointerId: 3 });
+    expect(container.querySelectorAll('.drawings polyline, .drawings circle')).toHaveLength(0);
   });
 
   it('switches language', async () => {
