@@ -208,6 +208,11 @@ describe('GameSession', () => {
     session.resign();
     expect(session.getSnapshot().evaluation).toMatchObject({ final: true });
     expect(session.getSnapshot().evaluation?.score).toBeLessThan(0);
+    // The bar can still be hidden and shown again after the game.
+    session.toggleEvaluation();
+    expect(session.getSnapshot().evaluation).toBeNull();
+    session.toggleEvaluation();
+    expect(session.getSnapshot().evaluation).toMatchObject({ final: true });
   });
 
   describe('browsing earlier moves', () => {

@@ -45,7 +45,9 @@ export function App({ createAi, createAnalysis, storage = globalThis.localStorag
 
   const [choosing, setChoosing] = useState(game.settings === null);
   // The game-over dialog shows once per ending, until the player closes it.
-  const [closedResult, setClosedResult] = useState(0);
+  // A game that was already over when the page loaded does not reopen the dialog;
+  // the status line shows its result.
+  const [closedResult, setClosedResult] = useState(() => session.getSnapshot().resultId);
 
   // ← → Home End browse the moves, as on lichess. The board's own arrow-key focus
   // movement, text fields and open dialogs keep their keys.
@@ -121,9 +123,7 @@ export function App({ createAi, createAnalysis, storage = globalThis.localStorag
                 </div>
               )}
             </div>
-            {(game.showEvaluation || game.evaluation?.final) && (
-              <EvalBar evaluation={game.evaluation} flipped={game.flipped} />
-            )}
+            {game.showEvaluation && <EvalBar evaluation={game.evaluation} flipped={game.flipped} />}
           </div>
           <Panel
             game={game}

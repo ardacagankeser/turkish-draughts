@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Color } from '../../engine';
 import { formatEvaluation } from '../evaluation';
+import { revealWithin } from '../scroll';
 import type { GameSession, Snapshot } from '../session';
 import { levelKey, reasonKey, useI18n } from '../i18n';
 
@@ -24,11 +25,8 @@ export function Panel({ game, session, onNewGame }: PanelProps) {
     const list = moveListEnd.current;
     if (!list) return;
     const current = list.querySelector<HTMLElement>('[aria-current="true"]');
-    if (current && typeof current.scrollIntoView === 'function') {
-      current.scrollIntoView({ block: 'nearest' });
-    } else if (!game.browsing) {
-      list.scrollTop = list.scrollHeight;
-    }
+    if (current) revealWithin(list, current);
+    else if (!game.browsing) list.scrollTop = list.scrollHeight;
   }, [game.moveNumber, game.moveList.length, game.browsing]);
 
   useEffect(() => {
@@ -55,7 +53,9 @@ export function Panel({ game, session, onNewGame }: PanelProps) {
         : game.result.winner === human
           ? t('youWin')
           : t('youLose');
-    status = `${t('gameOver')} — ${outcome} · ${t(reasonKey(game.result))}`;
+    // "Game over: You lose. By resignation." The outcome may already end with "!".
+    const head = `${t('gameOver')}: ${outcome}`;
+    status = `${/[.!?]$/.test(head) ? head : `${head}.`} ${t(reasonKey(game.result))}`;
   } else if (game.thinking && game.turn !== human) status = t('thinking');
   else if (game.turn === human) {
     if (game.selection && game.selection.path.length > 0) status = t('continueChain');

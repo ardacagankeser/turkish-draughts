@@ -70,6 +70,25 @@ describe('App', () => {
     await user.click(screen.getByRole('button', { name: 'Resign' }));
     await user.click(screen.getByRole('button', { name: 'Are you sure?' }));
     expect(screen.getByRole('meter')).toHaveAttribute('aria-valuenow', '0');
+    // Hiding still works once the game is over.
+    await user.click(screen.getByRole('button', { name: 'Close' }));
+    await user.click(screen.getByRole('button', { name: 'Evaluation bar' }));
+    expect(screen.queryByRole('meter')).not.toBeInTheDocument();
+  });
+
+  it('does not reopen the game-over dialog for a game that ended before a reload', () => {
+    const storage = new MemoryStorage();
+    storage.setItem(
+      'turkish-draughts:v1',
+      JSON.stringify({
+        settings: { human: 1, level: 'easy' },
+        moves: ['c3-c4'],
+        ending: { reason: 'resignation', winner: -1 },
+      }),
+    );
+    renderApp(storage);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Game over: You lose. By resignation.');
   });
 
   it('browses the moves by clicking the list and with the keyboard', async () => {
@@ -118,7 +137,7 @@ describe('App', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Close' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     // The finished game stays finished: only a new game (or flipping the board) is possible.
-    expect(screen.getByRole('status')).toHaveTextContent('Game over — You lose · By resignation.');
+    expect(screen.getByRole('status')).toHaveTextContent('Game over: You lose. By resignation.');
     for (const name of ['Take back', 'Hint', /Offer draw/, 'Resign']) {
       expect(screen.getByRole('button', { name })).toBeDisabled();
     }
