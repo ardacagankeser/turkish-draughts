@@ -2,11 +2,19 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { AiClient, AnalysisClient } from '../ai';
 import { Board } from './components/Board';
 import { EvalBar } from './components/EvalBar';
-import { GameOverDialog, NewGameDialog, ShortcutsDialog } from './components/Dialogs';
+import {
+  GameOverDialog,
+  NewGameDialog,
+  SettingsDialog,
+  ShortcutsDialog,
+} from './components/Dialogs';
 import { Panel } from './components/Panel';
 import type { Language } from './i18n';
 import { I18nContext, LANGUAGES, detectLanguage, translator } from './i18n';
+import { timing } from './animation';
 import { describeEvent } from './announce';
+import type { Preferences } from './preferences';
+import { animationScale, applyPreferences, loadPreferences, savePreferences } from './preferences';
 import { GameSession } from './session';
 import { SoundPlayer } from './sound';
 import { loadLanguage, saveLanguage } from './storage';
@@ -22,6 +30,20 @@ interface AppProps {
   readonly createSound?: () => SoundPlayer;
   readonly storage?: Storage;
 }
+
+const REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
+
+function subscribeReducedMotion(onChange: () => void): () => void {
+  if (typeof matchMedia !== 'function') return () => undefined;
+  const query = matchMedia(REDUCED_MOTION);
+  query.addEventListener('change', onChange);
+  return () => {
+    query.removeEventListener('change', onChange);
+  };
+}
+
+const prefersReducedMotion = () =>
+  typeof matchMedia === 'function' && matchMedia(REDUCED_MOTION).matches;
 
 function initialLanguage(storage: Storage): Language {
   const saved = loadLanguage(storage);
@@ -54,9 +76,22 @@ export function App({
 
   const [choosing, setChoosing] = useState(game.settings === null);
   const [helpOpen, setHelpOpen] = useState(false);
-  const [sound] = useState(() => createSound?.() ?? new SoundPlayer(storage));
-  const [muted, setMuted] = useState(sound.muted);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [sound] = useState(() => createSound?.() ?? new SoundPlayer());
+  const [preferences, setPreferences] = useState<Preferences>(() => loadPreferences(storage));
+  const reducedMotion = useSyncExternalStore(subscribeReducedMotion, prefersReducedMotion);
+  const boardTiming = useMemo(
+    () => timing(animationScale(preferences.animation, reducedMotion)),
+    [preferences.animation, reducedMotion],
+  );
   const human = game.settings?.human ?? 1;
+
+  useEffect(() => {
+    applyPreferences(document.documentElement, preferences);
+    savePreferences(preferences, storage);
+    sound.setVolume(preferences.volume, preferences.muted);
+    session.setConfirmMoves(preferences.confirmMoves);
+  }, [preferences, session, sound, storage]);
 
   // Browsers allow audio only after a user gesture.
   useEffect(() => {
@@ -73,7 +108,7 @@ export function App({
 
   // One sound per game event (move, capture, promotion, start, end).
   useEffect(() => {
-    if (game.event) sound.play(game.event, human);
+    if (game.event) sound.play(game.event, human, boardTiming);
     // Only when a new event arrives.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game.event]);
@@ -138,15 +173,25 @@ export function App({
             <button
               type="button"
               className="icon-button"
-              aria-pressed={!muted}
+              aria-pressed={!preferences.muted}
               aria-label={t('sound')}
               title={t('sound')}
               onClick={() => {
-                sound.setMuted(!muted);
-                setMuted(!muted);
+                setPreferences({ ...preferences, muted: !preferences.muted });
               }}
             >
-              {muted ? '🔇' : '🔊'}
+              {preferences.muted ? '🔇' : '🔊'}
+            </button>
+            <button
+              type="button"
+              className="icon-button"
+              aria-label={t('settings')}
+              title={t('settings')}
+              onClick={() => {
+                setSettingsOpen(true);
+              }}
+            >
+              ⚙
             </button>
             <button
               type="button"
@@ -198,6 +243,7 @@ export function App({
                 premoveTargets={game.premoveTargets}
                 premovable={game.premovable}
                 ghosts={game.ghosts}
+                timing={boardTiming}
                 onSquare={session.clickSquare}
                 onCancelPremove={session.cancelPremove}
               />
@@ -224,6 +270,19 @@ export function App({
           <a href={REPOSITORY}>GitHub</a>
         </footer>
 
+        {settingsOpen && (
+          <SettingsDialog
+            preferences={preferences}
+            onChange={setPreferences}
+            showEvaluation={game.showEvaluation}
+            onToggleEvaluation={session.toggleEvaluation}
+            language={language}
+            onLanguage={setLanguage}
+            onClose={() => {
+              setSettingsOpen(false);
+            }}
+          />
+        )}
         {helpOpen && (
           <ShortcutsDialog
             onClose={() => {

@@ -397,6 +397,39 @@ describe('GameSession', () => {
     });
   });
 
+  it('waits for a second click on the piece when moves must be confirmed', () => {
+    const { session } = started();
+    session.setConfirmMoves(true);
+    session.clickSquare(sq('c3'));
+    session.clickSquare(sq('c4'));
+    let snapshot = session.getSnapshot();
+    expect(snapshot.moveList).toEqual([]);
+    expect(snapshot.confirming).toBe(true);
+    expect(snapshot.selection).toEqual({ from: sq('c3'), path: [sq('c4')] });
+
+    // Clicking elsewhere takes it back, and that click picks another piece.
+    session.clickSquare(sq('d3'));
+    snapshot = session.getSnapshot();
+    expect(snapshot.confirming).toBe(false);
+    expect(snapshot.selection).toEqual({ from: sq('d3'), path: [] });
+
+    session.clickSquare(sq('d4'));
+    session.clickSquare(sq('d4'));
+    expect(session.getSnapshot().moveList).toEqual(['d3-d4']);
+
+    session.stop();
+  });
+
+  it('drops a move waiting for confirmation when confirmation is turned off', () => {
+    const { session } = started();
+    session.setConfirmMoves(true);
+    session.clickSquare(sq('c3'));
+    session.clickSquare(sq('c4'));
+    session.setConfirmMoves(false);
+    expect(session.getSnapshot().selection).toBeNull();
+    session.stop();
+  });
+
   it('ends the game on resignation', () => {
     const { session } = started();
     session.resign();

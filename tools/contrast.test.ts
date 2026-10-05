@@ -8,20 +8,29 @@ import { describe, expect, it } from 'vitest';
 
 const css = readFileSync(resolve(import.meta.dirname, '../src/ui/styles.css'), 'utf8');
 
-function tokens(block: string): Record<string, string> {
-  const found: Record<string, string> = {};
-  for (const match of block.matchAll(/--([\w-]+):\s*(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3});/g)) {
-    const [, name, value] = match;
-    if (name && value) found[name] = value;
+const HEX = '#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3}';
+
+/** Colour tokens of the main `:root` block, as `--name: #hex` or `light-dark(#hex, #hex)`. */
+function themes(): { light: Record<string, string>; dark: Record<string, string> } {
+  const start = css.indexOf(':root {');
+  const block = css.slice(start, css.indexOf('}', start));
+  const light: Record<string, string> = {};
+  const dark: Record<string, string> = {};
+  const pattern = new RegExp(
+    String.raw`--([\w-]+):\s*(?:light-dark\((${HEX}),\s*(${HEX})\)|(${HEX}));`,
+    'g',
+  );
+  for (const [, name, lightValue, darkValue, both] of block.matchAll(pattern)) {
+    if (!name) continue;
+    const forLight = lightValue ?? both;
+    const forDark = darkValue ?? both;
+    if (forLight) light[name] = forLight;
+    if (forDark) dark[name] = forDark;
   }
-  return found;
+  return { light, dark };
 }
 
-const lightBlock = css.slice(css.indexOf(':root {'), css.indexOf('}', css.indexOf(':root {')));
-const darkStart = css.indexOf('@media (prefers-color-scheme: dark)');
-const darkBlock = css.slice(darkStart, css.indexOf('}\n}', darkStart));
-const light = tokens(lightBlock);
-const dark = { ...light, ...tokens(darkBlock) };
+const { light, dark } = themes();
 
 function luminance(hex: string): number {
   // #abc is short for #aabbcc.

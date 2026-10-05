@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MemoryStorage } from '../test/fakes';
+import { timing } from './animation';
 import type { GameEvent } from './session';
 import type { AudioContextLike } from './sound';
 import { SoundPlayer, tonesFor } from './sound';
@@ -74,17 +74,22 @@ describe('sounds', () => {
     expect(tonesFor(end(null), 1)).toHaveLength(2);
   });
 
-  it('stays silent until unlocked by a gesture, and when muted', () => {
+  it('stays silent until unlocked by a gesture, when muted, and at zero volume', () => {
     const context = fakeContext();
-    const storage = new MemoryStorage();
-    const player = new SoundPlayer(storage, () => context);
+    const player = new SoundPlayer(() => context);
     expect(player.play(move(), 1)).toBe(0);
     player.unlock();
     expect(player.play(move({ captures: 2 }), 1)).toBe(3);
     expect(context.started).toBe(3);
-    player.setMuted(true);
+    player.setVolume(1, true);
     expect(player.play(move(), 1)).toBe(0);
-    // Muting is remembered.
-    expect(new SoundPlayer(storage, () => context).muted).toBe(true);
+    player.setVolume(0, false);
+    expect(player.play(move(), 1)).toBe(0);
+  });
+
+  it('times the capture ticks to the animation speed', () => {
+    const computer = move({ by: 'computer', captures: 2 });
+    const at = (scale: number) => tonesFor(computer, 1, timing(scale)).map((tone) => tone.at);
+    expect(at(1.6)[2]).toBeGreaterThan(at(1)[2] ?? 0);
   });
 });

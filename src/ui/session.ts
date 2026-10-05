@@ -14,7 +14,7 @@ import { AnalysisClient, MATE } from '../ai';
 import type { UiPiece } from './pieces';
 import { applyMove, piecesFromBoard } from './pieces';
 import type { Selection } from './selection';
-import { click, jumpedSoFar, premoveMoves } from './selection';
+import { candidates, click, jumpedSoFar, premoveMoves } from './selection';
 import type { Settings } from './storage';
 import { load, save } from './storage';
 
@@ -89,6 +89,8 @@ export interface Snapshot {
   readonly resultId: number;
   readonly humanMoves: readonly Move[];
   readonly selection: Selection | null;
+  /** The selection is a whole move, waiting for a second click to be played. */
+  readonly confirming: boolean;
   readonly thinking: boolean;
   readonly hint: Move | null;
   readonly moveList: readonly string[];
@@ -145,6 +147,7 @@ export class GameSession {
   #view: View | null = null;
   #missedMoves = 0;
   #selection: Selection | null = null;
+  #confirmMoves = false;
   #premove: Premove | null = null;
   #premoveFrom: Square | null = null;
   #premoveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -232,10 +235,32 @@ export class GameSession {
       return;
     }
     if (!this.#canPlay()) return;
+    const awaiting = this.#awaitingConfirmation();
+    if (awaiting) {
+      if (square === awaiting.to) {
+        this.#commit(awaiting);
+        return;
+      }
+      // Any other click takes the move back and counts as a fresh click.
+      this.#selection = null;
+    }
     const result = click(this.#game.legalMoves, this.#selection, square);
-    if (result.type === 'play') this.#commit(result.move);
+    if (result.type === 'play' && this.#confirmMoves) {
+      // Show the whole move and wait for its piece to be clicked again.
+      this.#selection = { from: result.move.from, path: result.move.path };
+      this.#emit();
+    } else if (result.type === 'play') this.#commit(result.move);
     else {
       this.#selection = result.selection;
+      this.#emit();
+    }
+  };
+
+  /** With confirmation on, a move chosen on the board waits for a second click. */
+  readonly setConfirmMoves = (on: boolean): void => {
+    this.#confirmMoves = on;
+    if (!on && this.#awaitingConfirmation()) {
+      this.#selection = null;
       this.#emit();
     }
   };
@@ -499,6 +524,17 @@ export class GameSession {
     return this.#game.history.map(moveToNotation);
   }
 
+  /** The move the selection completes, when it waits for confirmation. */
+  #awaitingConfirmation(): Move | null {
+    const selection = this.#selection;
+    if (!selection || selection.path.length === 0) return null;
+    return (
+      candidates(this.#game.legalMoves, selection).find(
+        (move) => move.path.length === selection.path.length,
+      ) ?? null
+    );
+  }
+
   #commit(move: Move): void {
     const mover = this.#game.turn;
     const played = this.#game.play(move);
@@ -694,6 +730,7 @@ export class GameSession {
       resultId: this.#resultId,
       humanMoves,
       selection: this.#selection,
+      confirming: this.#awaitingConfirmation() !== null,
       thinking: this.#thinking,
       hint: this.#hint,
       moveList: game.moveList,
