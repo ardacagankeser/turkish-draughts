@@ -1,5 +1,5 @@
 import type { Color } from '../engine';
-import { STEP_MS } from './components/Board';
+import { captureDuration, vanishStart } from './animation';
 import type { GameEvent } from './session';
 
 const MUTED_KEY = 'turkish-draughts:muted';
@@ -37,11 +37,16 @@ export function tonesFor(event: GameEvent, human: Color): Tone[] {
   if (event.kind === 'end') return endTones(event.result.winner, human, tone);
 
   const tones: Tone[] = [tone(0, 330, 0.06)];
-  // One tick per captured piece, as it fades on the board.
+  // One tick per captured piece as it flies off. The computer's captures play out beat by
+  // beat; the player has just made theirs on the board, so the ticks follow at once.
+  const tick = (i: number) => (event.by === 'computer' ? vanishStart(i) : i * 60) / 1000;
   for (let i = 0; i < event.captures; i++) {
-    tones.push({ ...tone(((i + 0.5) * STEP_MS) / 1000, 880, 0.05, 0.8), type: 'square' });
+    tones.push({ ...tone(tick(i), 880, 0.05, 0.8), type: 'square' });
   }
-  const after = (Math.max(1, event.captures) * STEP_MS) / 1000;
+  const after =
+    event.by === 'computer' && event.captures > 0
+      ? captureDuration(event.captures) / 1000
+      : tick(event.captures) + 0.1;
   if (event.promotes) tones.push(tone(after, 660, 0.12), tone(after + 0.12, 990, 0.18));
   else if (event.damaAlti) tones.push(tone(after, 587, 0.1, 0.6));
   if (event.mustCapture) tones.push(tone(after + 0.05, 440, 0.07, 0.5));

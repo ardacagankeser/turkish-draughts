@@ -331,21 +331,9 @@ a {
     inset 0 0 0 2px #c79a3a;
 }
 
+/* A piece taken by the last move, visible only while the move's animation flies it off. */
 .piece.captured {
-  animation-name: fade-out;
-  animation-fill-mode: both;
-  animation-timing-function: ease-in;
-}
-
-@keyframes fade-out {
-  from {
-    opacity: 1;
-    scale: 1;
-  }
-  to {
-    opacity: 0;
-    scale: 0.6;
-  }
+  opacity: 0;
 }
 
 @keyframes pulse {

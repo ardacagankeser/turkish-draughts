@@ -169,6 +169,7 @@ export function Panel({ game, session, onNewGame }: PanelProps) {
             spellCheck={false}
             value={typed}
             placeholder="c3-c4"
+            disabled={over}
             aria-describedby="notation-help"
             aria-invalid={typedError !== null}
             onChange={(event) => {
@@ -176,7 +177,7 @@ export function Panel({ game, session, onNewGame }: PanelProps) {
               setTypedError(null);
             }}
           />
-          <button type="submit" disabled={typed.trim() === ''}>
+          <button type="submit" disabled={over || typed.trim() === ''}>
             {t('play')}
           </button>
         </div>
