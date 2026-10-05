@@ -13,6 +13,8 @@ import type { Language } from './i18n';
 import { I18nContext, LANGUAGES, detectLanguage, translator } from './i18n';
 import { timing } from './animation';
 import { describeEvent } from './announce';
+import { AnalysisView } from './components/AnalysisView';
+import { parseRoute, useHash } from './route';
 import type { Preferences } from './preferences';
 import { animationScale, applyPreferences, loadPreferences, savePreferences } from './preferences';
 import { GameSession } from './session';
@@ -59,6 +61,9 @@ export function App({
   createSound,
   storage = globalThis.localStorage,
 }: AppProps) {
+  const hash = useHash();
+  const route = useMemo(() => parseRoute(hash), [hash]);
+  const page = route.page;
   const [session] = useState(
     () =>
       new GameSession(
@@ -125,8 +130,9 @@ export function App({
   const [closedResult, setClosedResult] = useState(() => session.getSnapshot().resultId);
 
   // ← → Home End browse the moves, as on lichess. The board's own arrow-key focus
-  // movement, text fields and open dialogs keep their keys.
+  // movement, text fields and open dialogs keep their keys. Other pages have their own.
   useEffect(() => {
+    if (page !== 'play') return;
     const browse: Record<string, () => void> = {
       ArrowLeft: session.showPrevious,
       ArrowRight: session.showNext,
@@ -160,7 +166,7 @@ export function App({
     return () => {
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [session]);
+  }, [session, page]);
 
   // The clocks stop while the page is hidden (another tab, a locked phone).
   useEffect(() => {
@@ -187,6 +193,14 @@ export function App({
             <h1>{t('title')}</h1>
             <p className="subtitle">{t('subtitle')}</p>
           </div>
+          <nav className="pages" aria-label={t('pages')}>
+            <a href="#/" aria-current={page === 'play' ? 'page' : undefined}>
+              {t('pagePlay')}
+            </a>
+            <a href="#/analysis" aria-current={page === 'analysis' ? 'page' : undefined}>
+              {t('pageAnalysis')}
+            </a>
+          </nav>
           <div className="header-tools">
             <button
               type="button"
@@ -241,46 +255,62 @@ export function App({
 
         {/* Screen readers hear each move, capture, promotion and result. */}
         <div className="visually-hidden" aria-live="polite" aria-atomic="true">
-          {game.event && <span key={game.event.id}>{describeEvent(game.event, listener, t)}</span>}
+          {page === 'play' && game.event && (
+            <span key={game.event.id}>{describeEvent(game.event, listener, t)}</span>
+          )}
         </div>
 
-        <main className="layout">
-          <div className="board-area">
-            <div className={`board-wrap${game.browsing ? ' browsing' : ''}`}>
-              <Board
-                pieces={game.pieces}
-                captured={game.captured}
-                lastMove={game.lastMove}
-                moveNumber={game.moveNumber}
-                legalMoves={game.humanMoves}
-                selection={game.selection}
-                hint={game.hint ?? game.bestMove}
-                flipped={game.flipped}
-                premove={game.premove}
-                premoveFrom={game.premoveFrom}
-                premoveTargets={game.premoveTargets}
-                premovable={game.premovable}
-                ghosts={game.ghosts}
-                timing={boardTiming}
-                onSquare={session.clickSquare}
-                onCancelPremove={session.cancelPremove}
-              />
-              {game.notice && (
-                <div className={`notice ${game.notice}`} role="status">
-                  {t(game.notice)}
-                </div>
+        {route.page === 'analysis' ? (
+          // A new link (another position or game) opens a fresh board.
+          <AnalysisView
+            key={hash}
+            fen={route.fen}
+            moves={route.moves}
+            ply={route.ply}
+            createAnalysis={createAnalysis ?? (() => new AnalysisClient())}
+            timing={boardTiming}
+          />
+        ) : (
+          <main className="layout">
+            <div className="board-area">
+              <div className={`board-wrap${game.browsing ? ' browsing' : ''}`}>
+                <Board
+                  pieces={game.pieces}
+                  captured={game.captured}
+                  lastMove={game.lastMove}
+                  moveNumber={game.moveNumber}
+                  legalMoves={game.humanMoves}
+                  selection={game.selection}
+                  hint={game.hint ?? game.bestMove}
+                  flipped={game.flipped}
+                  premove={game.premove}
+                  premoveFrom={game.premoveFrom}
+                  premoveTargets={game.premoveTargets}
+                  premovable={game.premovable}
+                  ghosts={game.ghosts}
+                  timing={boardTiming}
+                  onSquare={session.clickSquare}
+                  onCancelPremove={session.cancelPremove}
+                />
+                {game.notice && (
+                  <div className={`notice ${game.notice}`} role="status">
+                    {t(game.notice)}
+                  </div>
+                )}
+              </div>
+              {game.showEvaluation && (
+                <EvalBar evaluation={game.evaluation} flipped={game.flipped} />
               )}
             </div>
-            {game.showEvaluation && <EvalBar evaluation={game.evaluation} flipped={game.flipped} />}
-          </div>
-          <Panel
-            game={game}
-            session={session}
-            onNewGame={() => {
-              setChoosing(true);
-            }}
-          />
-        </main>
+            <Panel
+              game={game}
+              session={session}
+              onNewGame={() => {
+                setChoosing(true);
+              }}
+            />
+          </main>
+        )}
 
         <footer className="footer">
           <a href={`${REPOSITORY}/blob/main/docs/RULES.md`}>{t('rules')}</a>
@@ -308,7 +338,7 @@ export function App({
             }}
           />
         )}
-        {choosing && (
+        {page === 'play' && choosing && (
           <NewGameDialog
             initial={game.settings}
             onStart={(settings) => {
@@ -324,22 +354,26 @@ export function App({
             }
           />
         )}
-        {!choosing && game.result && game.settings && closedResult !== game.resultId && (
-          <GameOverDialog
-            result={game.result}
-            human={listener}
-            onPlayAgain={() => {
-              setChoosing(true);
-            }}
-            onClose={() => {
-              setClosedResult(game.resultId);
-            }}
-            onReview={() => {
-              setClosedResult(game.resultId);
-              session.startReview();
-            }}
-          />
-        )}
+        {page === 'play' &&
+          !choosing &&
+          game.result &&
+          game.settings &&
+          closedResult !== game.resultId && (
+            <GameOverDialog
+              result={game.result}
+              human={listener}
+              onPlayAgain={() => {
+                setChoosing(true);
+              }}
+              onClose={() => {
+                setClosedResult(game.resultId);
+              }}
+              onReview={() => {
+                setClosedResult(game.resultId);
+                session.startReview();
+              }}
+            />
+          )}
       </div>
     </I18nContext.Provider>
   );

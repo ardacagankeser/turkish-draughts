@@ -8,7 +8,10 @@ import { HOP_MS, NORMAL_TIMING } from './animation';
 import { App } from './App';
 import { MESSAGES, detectLanguage, translator } from './i18n';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.location.hash = '';
+});
 
 function renderApp(storage = new MemoryStorage()) {
   storage.setItem('turkish-draughts:language', 'en');
@@ -373,6 +376,31 @@ describe('App', () => {
     expect(screen.getByRole('status')).toHaveTextContent(/was played here|No mistakes or blunders/);
     await user.click(within(review).getByRole('button', { name: /Stop|Close/ }));
     expect(within(review).queryByRole('group')).not.toBeInTheDocument();
+  });
+
+  it('opens a shared position on the analysis board, and links back to the game', async () => {
+    window.location.hash = '#/analysis?moves=a3-a4,b6-b5,d3-d4,d6-d5';
+    const { user } = renderApp();
+    expect(screen.getByRole('link', { name: 'Analysis board' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    expect(screen.getByRole('status')).toHaveTextContent('White to move');
+    expect(screen.getByRole('button', { name: 'd6-d5' })).toHaveAttribute('aria-current', 'true');
+    const field = (name: string) =>
+      screen.getByRole<HTMLInputElement | HTMLTextAreaElement>('textbox', { name }).value;
+    expect(field('FEN')).toMatch(/^W:W/);
+    expect(field('PDN')).toContain('1. a3-a4 b6-b5 2. d3-d4 d6-d5 *');
+    // Both sides move on the analysis board.
+    await user.click(screen.getByRole('gridcell', { name: 'd4, white man' }));
+    await user.click(screen.getByRole('gridcell', { name: 'b8' }));
+    expect(screen.getByRole('status')).toHaveTextContent('Black to move');
+
+    await user.clear(screen.getByRole('textbox', { name: 'FEN' }));
+    await user.type(screen.getByRole('textbox', { name: 'FEN' }), 'nonsense');
+    await user.click(screen.getByRole('button', { name: 'Load' }));
+    expect(screen.getByRole('alert')).toHaveTextContent('not a valid FEN');
+    expect(screen.getByRole('link', { name: 'Back to the game' })).toHaveAttribute('href', '#/');
   });
 
   it('switches language', async () => {
