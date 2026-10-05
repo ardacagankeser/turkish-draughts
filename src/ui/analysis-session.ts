@@ -7,6 +7,14 @@ import { applyMove, piecesFromBoard } from './pieces';
 import type { Selection } from './selection';
 import { click, jumpedSoFar } from './selection';
 import type { BoardLine, Evaluation } from './session';
+import type { Probe, TablebaseInfo } from './tablebase-view';
+import { TABLEBASE_PIECES, tablebaseInfo } from './tablebase-view';
+
+/** The tablebase panel: shown for positions with three pieces or fewer. */
+export type TablebasePanel =
+  | { readonly status: 'loading' }
+  | { readonly status: 'unavailable' }
+  | ({ readonly status: 'ready' } & TablebaseInfo);
 
 /** The analysis board keeps thinking about a position for this long, as lichess does. */
 const ANALYSIS = { maxDepth: 40, timeMs: 30_000 };
@@ -34,6 +42,8 @@ export interface AnalysisSnapshot {
   /** The engine's first move, drawn as an arrow. */
   readonly bestMove: BoardLine | null;
   readonly flipped: boolean;
+  /** Exact results from the endgame tablebase, or `null` with more than three pieces. */
+  readonly tablebase: TablebasePanel | null;
 }
 
 /**
@@ -54,6 +64,10 @@ export class AnalysisSession {
   #selection: Selection | null = null;
   #evaluation: Evaluation | null = null;
   #flipped: boolean;
+  readonly #loadTablebase: () => Promise<Probe | null>;
+  /** Loaded on the first position with few enough pieces; `undefined` before that. */
+  #tablebase: Probe | 'loading' | 'unavailable' | undefined;
+  #tablebasePanel: TablebasePanel | null = null;
   #snapshot: AnalysisSnapshot;
 
   /** Throws if the position or a move is not valid. */
@@ -62,8 +76,10 @@ export class AnalysisSession {
     fen: string,
     moves: readonly string[],
     ply?: number | null,
+    loadTablebase: () => Promise<Probe | null> = () => Promise.resolve(null),
   ) {
     this.#analysis = analysis;
+    this.#loadTablebase = loadTablebase;
     // Validate the whole line first, then show the requested position.
     const full = new Game(fen);
     this.#line = moves.map((move) => moveToNotation(full.play(move)));
@@ -73,6 +89,7 @@ export class AnalysisSession {
     this.#game = this.#replay(this.#ply);
     this.#pieces = piecesFromBoard(this.#game.board);
     this.#flipped = new Game(fen).turn === -1;
+    this.#updateTablebase();
     this.#snapshot = this.#build();
   }
 
@@ -100,13 +117,27 @@ export class AnalysisSession {
       this.#emit();
       return;
     }
-    const notation = moveToNotation(result.move);
+    this.#play(result.move);
+  };
+
+  #play(move: Move): void {
+    const notation = moveToNotation(move);
     // A new move replaces the rest of the line; the next move of the line just steps on.
     if (this.#line[this.#ply] !== notation) {
       this.#line = [...this.#line.slice(0, this.#ply), notation];
       this.#moveList = [...this.#replay(this.#line.length).moveList];
     }
     this.#goTo(this.#ply + 1);
+  }
+
+  /** Plays a move given in landing notation (from the tablebase list). */
+  readonly playMove = (landing: string): void => {
+    if (this.#game.isOver) return;
+    try {
+      this.#play(findMove(this.#game.legalMoves, landing));
+    } catch {
+      // Not a legal move here: nothing to do.
+    }
   };
 
   readonly showPly = (ply: number): void => {
@@ -159,8 +190,42 @@ export class AnalysisSession {
     this.#game = game;
     this.#ply = ply;
     this.#selection = null;
+    this.#updateTablebase();
     this.#analyse();
     this.#emit();
+  }
+
+  /** Probes the tablebase for the position shown, loading it the first time it is needed. */
+  #updateTablebase(): void {
+    const board = this.#game.board;
+    if (this.#game.isOver || board.count(1) + board.count(-1) > TABLEBASE_PIECES) {
+      this.#tablebasePanel = null;
+      return;
+    }
+    const tablebase = this.#tablebase;
+    if (tablebase === undefined) {
+      this.#tablebase = 'loading';
+      this.#tablebasePanel = { status: 'loading' };
+      void this.#loadTablebase()
+        .catch(() => null)
+        .then((loaded) => {
+          this.#tablebase = loaded ?? 'unavailable';
+          this.#updateTablebase();
+          this.#emit();
+        });
+      return;
+    }
+    if (tablebase === 'loading' || tablebase === 'unavailable') {
+      this.#tablebasePanel = { status: tablebase };
+      return;
+    }
+    const ply = this.#ply;
+    const info = tablebaseInfo(tablebase, this.#game, (move) => {
+      const after = this.#replay(ply);
+      after.play(move);
+      return after;
+    });
+    this.#tablebasePanel = info ? { status: 'ready', ...info } : null;
   }
 
   #replay(ply: number): Game {
@@ -243,6 +308,7 @@ export class AnalysisSession {
       pv: this.#pvShown(),
       bestMove: from === undefined || this.#selection ? null : { from, path },
       flipped: this.#flipped,
+      tablebase: this.#tablebasePanel,
     };
   }
 }

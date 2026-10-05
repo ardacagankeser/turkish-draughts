@@ -18,3 +18,4 @@ export { isReviewRequest, review, reviewTime } from './review';
 export type { ReviewDone, ReviewPosition, ReviewRequest, ReviewUpdate } from './review';
 export { ReviewClient } from './review-client';
 export type { ReviewOptions, ReviewWorkerLike } from './review-client';
+export { loadTablebase } from './tablebase-loader';
