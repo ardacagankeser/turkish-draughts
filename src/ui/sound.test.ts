@@ -8,6 +8,7 @@ const move = (overrides: Partial<Extract<GameEvent, { kind: 'move' }>> = {}): Ga
   id: 1,
   kind: 'move',
   by: 'human',
+  side: 1,
   notation: 'c3-c4',
   captures: 0,
   promotes: false,

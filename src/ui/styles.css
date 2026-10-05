@@ -1229,3 +1229,12 @@ kbd {
   background: var(--danger);
   color: var(--danger-text);
 }
+
+/* Two players on one device ------------------------------------------------- */
+.choices.two {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.dialog form > .setting.check {
+  margin-bottom: 14px;
+}

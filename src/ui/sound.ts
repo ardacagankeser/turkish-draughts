@@ -26,7 +26,11 @@ interface Tone {
 }
 
 /** The tones for an event; empty when it makes no sound. */
-export function tonesFor(event: GameEvent, human: Color, timing: Timing = NORMAL_TIMING): Tone[] {
+export function tonesFor(
+  event: GameEvent,
+  human: Color | null,
+  timing: Timing = NORMAL_TIMING,
+): Tone[] {
   const tone = (at: number, frequency: number, duration = 0.08, gain = 1): Tone => ({
     at,
     frequency,
@@ -38,7 +42,9 @@ export function tonesFor(event: GameEvent, human: Color, timing: Timing = NORMAL
   if (event.kind === 'end') return endTones(event.result.winner, human, tone);
   // Two short beeps when the player's own clock gets low.
   if (event.kind === 'lowTime') {
-    return event.side === human ? [tone(0, 1046, 0.07, 0.7), tone(0.16, 1046, 0.07, 0.7)] : [];
+    return event.side === human || human === null
+      ? [tone(0, 1046, 0.07, 0.7), tone(0.16, 1046, 0.07, 0.7)]
+      : [];
   }
 
   const tones: Tone[] = [tone(0, 330, 0.06)];
@@ -61,11 +67,16 @@ export function tonesFor(event: GameEvent, human: Color, timing: Timing = NORMAL
 
 function endTones(
   winner: Color | null,
-  human: Color,
+  human: Color | null,
   tone: (at: number, frequency: number, duration?: number) => Tone,
   start = 0,
 ): Tone[] {
-  const notes = winner === null ? [523, 523] : winner === human ? [523, 659, 784] : [523, 415, 330];
+  const notes =
+    winner === null
+      ? [523, 523]
+      : winner === human || human === null
+        ? [523, 659, 784]
+        : [523, 415, 330];
   return notes.map((frequency, i) => tone(start + i * 0.14, frequency, 0.16));
 }
 
@@ -97,7 +108,7 @@ export class SoundPlayer {
     if (this.#context?.state === 'suspended') void this.#context.resume().catch(() => undefined);
   }
 
-  play(event: GameEvent, human: Color, timing: Timing = NORMAL_TIMING): number {
+  play(event: GameEvent, human: Color | null, timing: Timing = NORMAL_TIMING): number {
     const context = this.#context;
     if (this.#muted || this.#volume <= 0 || !context) return 0;
     const tones = tonesFor(event, human, timing);

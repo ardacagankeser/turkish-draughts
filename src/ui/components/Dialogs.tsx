@@ -10,6 +10,7 @@ import { ANIMATION_SPEEDS, BOARDS, PIECE_STYLES, THEMES } from '../preferences';
 import type { Settings } from '../storage';
 import type { TimeControl } from '../clock';
 import { TIME_CONTROLS } from '../clock';
+import { outcomeText } from '../announce';
 
 const FOCUSABLE =
   'button:not(:disabled), input:not(:disabled), select:not(:disabled), [href], [tabindex="0"]';
@@ -263,6 +264,8 @@ export function NewGameDialog({
   const [side, setSide] = useState<SideChoice>(initial?.human ?? 1);
   const [level, setLevel] = useState<Level>(initial?.level ?? 'medium');
   const [clock, setClock] = useState<TimeControl | null>(initial?.clock ?? null);
+  const [twoPlayers, setTwoPlayers] = useState(initial?.opponent === 'human');
+  const [rotate, setRotate] = useState(initial?.rotate ?? false);
   const clocks: [TimeControl | null, string][] = [
     [null, t('untimed')],
     ...TIME_CONTROLS.map(({ id, control }): [TimeControl, string] => [
@@ -285,21 +288,30 @@ export function NewGameDialog({
       <form
         onSubmit={(event) => {
           event.preventDefault();
+          if (twoPlayers) {
+            onStart({ human: 1, level, clock, opponent: 'human', rotate });
+            return;
+          }
           const human: Color = side === 'random' ? (Math.random() < 0.5 ? 1 : -1) : side;
           onStart({ human, level, clock });
         }}
       >
         <fieldset>
-          <legend>{t('playAs')}</legend>
-          <div className="choices">
-            {sides.map(([value, label]) => (
-              <label key={String(value)} className="choice">
+          <legend>{t('opponent')}</legend>
+          <div className="choices two">
+            {(
+              [
+                [false, t('vsComputer')],
+                [true, t('twoPlayers')],
+              ] as const
+            ).map(([value, label]) => (
+              <label key={label} className="choice">
                 <input
                   type="radio"
-                  name="side"
-                  checked={side === value}
+                  name="opponent"
+                  checked={twoPlayers === value}
                   onChange={() => {
-                    setSide(value);
+                    setTwoPlayers(value);
                   }}
                 />
                 <span>{label}</span>
@@ -307,24 +319,57 @@ export function NewGameDialog({
             ))}
           </div>
         </fieldset>
-        <fieldset>
-          <legend>{t('level')}</legend>
-          <div className="choices levels">
-            {LEVELS.map((value) => (
-              <label key={value} className="choice">
-                <input
-                  type="radio"
-                  name="level"
-                  checked={level === value}
-                  onChange={() => {
-                    setLevel(value);
-                  }}
-                />
-                <span>{t(levelKey(value))}</span>
-              </label>
-            ))}
-          </div>
-        </fieldset>
+        {twoPlayers ? (
+          <label className="setting check">
+            <input
+              type="checkbox"
+              checked={rotate}
+              onChange={() => {
+                setRotate(!rotate);
+              }}
+            />
+            <span>{t('rotateBoard')}</span>
+          </label>
+        ) : (
+          <>
+            <fieldset>
+              <legend>{t('playAs')}</legend>
+              <div className="choices">
+                {sides.map(([value, label]) => (
+                  <label key={String(value)} className="choice">
+                    <input
+                      type="radio"
+                      name="side"
+                      checked={side === value}
+                      onChange={() => {
+                        setSide(value);
+                      }}
+                    />
+                    <span>{label}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend>{t('level')}</legend>
+              <div className="choices levels">
+                {LEVELS.map((value) => (
+                  <label key={value} className="choice">
+                    <input
+                      type="radio"
+                      name="level"
+                      checked={level === value}
+                      onChange={() => {
+                        setLevel(value);
+                      }}
+                    />
+                    <span>{t(levelKey(value))}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          </>
+        )}
         <fieldset>
           <legend>{t('timeControl')}</legend>
           <div className="choices clocks">
@@ -365,13 +410,13 @@ export function GameOverDialog({
   onClose,
 }: {
   result: GameResult;
-  human: Color;
+  /** The player's side, or `null` with two players. */
+  human: Color | null;
   onPlayAgain: () => void;
   onClose: () => void;
 }) {
   const { t } = useI18n();
-  const title =
-    result.winner === null ? t('draw') : result.winner === human ? t('youWin') : t('youLose');
+  const title = outcomeText(result.winner, human, t);
   return (
     <Dialog title={title} onClose={onClose}>
       <p>{t(reasonKey(result))}</p>

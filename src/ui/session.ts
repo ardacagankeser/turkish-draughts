@@ -45,6 +45,8 @@ export type GameEvent =
       readonly id: number;
       readonly kind: 'move';
       readonly by: 'human' | 'computer';
+      /** The side that moved. */
+      readonly side: Color;
       /** TÜDAF notation, as in the move list. */
       readonly notation: string;
       readonly captures: number;
@@ -135,8 +137,8 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const isAbort = (error: unknown) => error instanceof DOMException && error.name === 'AbortError';
 
 /**
- * A game against the computer: the rules engine, the AI worker, and UI state such as
- * the selection and animations. Framework-free; React reads it via `useSyncExternalStore`.
+ * A game against the computer, or between two players on one device: the rules engine,
+ * the AI worker, and UI state such as the selection and animations. Framework-free; React reads it via `useSyncExternalStore`.
  */
 export class GameSession {
   readonly #ai: AiClient;
@@ -296,11 +298,15 @@ export class GameSession {
   readonly newGame = (settings: Settings): void => {
     this.#cancelAi();
     this.#game = new Game();
-    this.#settings = settings;
     this.#clock = settings.clock ? new Clock(settings.clock, this.#now) : null;
     this.#drawOffers = 0;
     this.#evaluation = null;
-    this.#flipped = settings.human === -1;
+    // Two players see no evaluation by default; it comes back for the next computer game.
+    const wasHotseat = this.#settings?.opponent === 'human';
+    this.#settings = settings;
+    if (this.#hotseat()) this.#showEvaluation = false;
+    else if (wasHotseat) this.#showEvaluation = true;
+    this.#flipped = this.#hotseat() ? false : settings.human === -1;
     this.#setNotice(null);
     this.#event = { id: ++this.#eventId, kind: 'start' };
     void this.#ai.newGame().catch(() => undefined);
@@ -323,16 +329,24 @@ export class GameSession {
     return 'played';
   };
 
-  /** Takes back the last move pair. A finished game is final and cannot be taken back. */
+  /**
+   * Takes back the last move pair, or with two players the last move. A finished game is
+   * final and cannot be taken back.
+   */
   readonly undo = (): void => {
     if (this.#game.isOver) return;
     this.#cancelAi();
     const human = this.#settings?.human ?? 1;
-    // Take back the AI's reply and the human's move, back to the human's turn.
-    while (this.#game.history.length > 0) {
-      this.#game.undo();
-      if (this.#game.turn === human) break;
+    if (this.#hotseat()) {
+      if (this.#game.history.length > 0) this.#game.undo();
+    } else {
+      // Take back the AI's reply and the human's move, back to the human's turn.
+      while (this.#game.history.length > 0) {
+        this.#game.undo();
+        if (this.#game.turn === human) break;
+      }
     }
+    this.#rotate();
     this.#clock?.run(this.#game.history.length > 0 ? this.#game.turn : null);
     this.#reset();
   };
@@ -356,7 +370,15 @@ export class GameSession {
 
   readonly offerDraw = (): void => {
     const settings = this.#settings;
-    if (!settings || !this.#humanToMove() || this.#drawOffers >= MAX_DRAW_OFFERS) return;
+    if (!settings || !this.#humanToMove()) return;
+    // Two players at one device agree there and then (the panel asks to confirm).
+    if (this.#hotseat()) {
+      this.#cancelAi();
+      this.#game.agreeDraw();
+      this.#endNow();
+      return;
+    }
+    if (this.#drawOffers >= MAX_DRAW_OFFERS) return;
     const token = this.#token;
     this.#drawOffers++;
     this.#setThinking(true);
@@ -385,8 +407,15 @@ export class GameSession {
   readonly resign = (): void => {
     if (!this.#settings || this.#game.isOver) return;
     this.#cancelAi();
-    this.#game.resign(this.#settings.human);
+    // With two players, the side to move resigns.
+    this.#game.resign(this.#hotseat() ? this.#game.turn : this.#settings.human);
+    this.#endNow();
+  };
+
+  /** Records an ending that is not a move: a resignation or an agreed draw. */
+  readonly #endNow = (): void => {
     this.#clock?.stop();
+    this.#selection = null;
     this.#resultId++;
     if (this.#game.result)
       this.#event = { id: ++this.#eventId, kind: 'end', result: this.#game.result };
@@ -465,12 +494,22 @@ export class GameSession {
 
   // --- Internals ----------------------------------------------------------------
 
+  /** Two players share the device; there is no AI side. */
+  #hotseat(): boolean {
+    return this.#settings?.opponent === 'human';
+  }
+
+  /** With two players and rotation on, the side to move sits at the bottom. */
+  #rotate(): void {
+    if (this.#hotseat() && this.#settings?.rotate) this.#flipped = this.#game.turn === -1;
+  }
+
   #humanToMove(): boolean {
     return (
       this.#settings !== null &&
       !this.#thinking &&
       !this.#game.isOver &&
-      this.#game.turn === this.#settings.human
+      (this.#hotseat() || this.#game.turn === this.#settings.human)
     );
   }
 
@@ -484,6 +523,7 @@ export class GameSession {
     const settings = this.#settings;
     return (
       settings !== null &&
+      !this.#hotseat() &&
       this.#thinking &&
       this.#view === null &&
       !this.#game.isOver &&
@@ -586,19 +626,22 @@ export class GameSession {
     this.#lastMove = played;
     this.#selection = null;
     this.#hint = null;
+    if (!this.#view) this.#rotate();
     if (played.promotes && !this.#view) this.#setNotice('dama');
     else if (damaAlti && !this.#view) this.#setNotice('damaAlti');
     const nextMoves = this.#game.isOver ? [] : this.#game.legalMoves;
     this.#event = {
       id: ++this.#eventId,
       kind: 'move',
-      by: mover === this.#settings?.human ? 'human' : 'computer',
+      by: this.#hotseat() || mover === this.#settings?.human ? 'human' : 'computer',
+      side: mover,
       notation: this.#game.moveList.at(-1) ?? '',
       captures: played.captures.length,
       promotes: played.promotes,
       damaAlti,
       mustCapture:
-        this.#game.turn === this.#settings?.human && (nextMoves[0]?.captures.length ?? 0) > 0,
+        (this.#hotseat() || this.#game.turn === this.#settings?.human) &&
+        (nextMoves[0]?.captures.length ?? 0) > 0,
       result: this.#game.result,
     };
     if (this.#game.isOver) this.#resultId++;
@@ -660,7 +703,13 @@ export class GameSession {
 
   #maybeAiMove(): void {
     const settings = this.#settings;
-    if (!settings || this.#thinking || this.#game.isOver || this.#game.turn === settings.human) {
+    if (
+      !settings ||
+      this.#hotseat() ||
+      this.#thinking ||
+      this.#game.isOver ||
+      this.#game.turn === settings.human
+    ) {
       return;
     }
     const token = ++this.#token;
@@ -803,9 +852,13 @@ export class GameSession {
     const human = this.#settings?.human ?? 1;
     const humanMoves = this.#canPlay() ? game.legalMoves : [];
     const view = this.#view;
-    // The human has a move to take back once they have played at least once.
-    const humanPlies =
-      human === 1 ? Math.ceil(game.history.length / 2) : Math.floor(game.history.length / 2);
+    // The human has a move to take back once they have played at least once; with two
+    // players, any move can be taken back.
+    const humanPlies = this.#hotseat()
+      ? game.history.length
+      : human === 1
+        ? Math.ceil(game.history.length / 2)
+        : Math.floor(game.history.length / 2);
     return {
       settings: this.#settings,
       pieces: view?.pieces ?? this.#pieces,

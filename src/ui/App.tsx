@@ -85,6 +85,8 @@ export function App({
     [preferences.animation, reducedMotion],
   );
   const human = game.settings?.human ?? 1;
+  // Announcements and sounds speak of White and Black when two players share the device.
+  const listener = game.settings?.opponent === 'human' ? null : human;
 
   useEffect(() => {
     applyPreferences(document.documentElement, preferences);
@@ -108,7 +110,7 @@ export function App({
 
   // One sound per game event (move, capture, promotion, start, end).
   useEffect(() => {
-    if (game.event) sound.play(game.event, human, boardTiming);
+    if (game.event) sound.play(game.event, listener, boardTiming);
     // Only when a new event arrives.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game.event]);
@@ -234,7 +236,7 @@ export function App({
 
         {/* Screen readers hear each move, capture, promotion and result. */}
         <div className="visually-hidden" aria-live="polite" aria-atomic="true">
-          {game.event && <span key={game.event.id}>{describeEvent(game.event, human, t)}</span>}
+          {game.event && <span key={game.event.id}>{describeEvent(game.event, listener, t)}</span>}
         </div>
 
         <main className="layout">
@@ -320,7 +322,7 @@ export function App({
         {!choosing && game.result && game.settings && closedResult !== game.resultId && (
           <GameOverDialog
             result={game.result}
-            human={game.settings.human}
+            human={listener}
             onPlayAgain={() => {
               setChoosing(true);
             }}
