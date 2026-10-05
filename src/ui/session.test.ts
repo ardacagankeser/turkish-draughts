@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseSquare } from '../engine';
+import type { ReviewPosition, ReviewUpdate, ReviewWorkerLike } from '../ai';
+import { ReviewClient } from '../ai';
 import { MemoryStorage, fakeAi, fakeAnalysis, fakeReview } from '../test/fakes';
 import type { Snapshot } from './session';
 import { GameSession } from './session';
@@ -597,6 +599,113 @@ describe('GameSession', () => {
     session.newGame({ human: 1, level: 'easy' });
     expect(session.getSnapshot().review).toBeNull();
     session.stop();
+  });
+
+  describe('learning from mistakes', () => {
+    /** A review worker that answers with prepared evaluations instead of searching. */
+    const scripted = (scores: number[], best: string[]) =>
+      new ReviewClient(() => {
+        const worker: ReviewWorkerLike = {
+          onmessage: null,
+          terminate: () => undefined,
+          postMessage: (message) => {
+            if (message.type !== 'review') return;
+            queueMicrotask(() => {
+              scores.forEach((score, index) => {
+                const position: ReviewPosition = {
+                  id: message.id,
+                  type: 'review-position',
+                  index,
+                  score,
+                  depth: 8,
+                  best: best[index] ?? null,
+                  pv: [],
+                  legal: 8,
+                  second: null,
+                };
+                worker.onmessage?.({ data: position } as MessageEvent<ReviewUpdate>);
+              });
+              worker.onmessage?.({
+                data: { id: message.id, type: 'review-done' },
+              } as MessageEvent<ReviewUpdate>);
+            });
+          },
+        };
+        return worker;
+      });
+
+    /** White resigned after a3-a4, which the review calls a blunder (+300 to -500). */
+    const reviewed = async () => {
+      const storage = new MemoryStorage();
+      storage.setItem(
+        'turkish-draughts:v1',
+        JSON.stringify({
+          settings: { human: 1, level: 'easy' },
+          moves: ['a3-a4', 'b6-b5'],
+          ending: { reason: 'resignation', winner: -1 },
+        }),
+      );
+      const session = new GameSession(
+        fakeAi(),
+        storage,
+        fakeAnalysis(),
+        undefined,
+        scripted([300, -500, -500], ['c3-c4', 'b6-b5', 'a4-a5']),
+      );
+      session.startReview();
+      await until(session, (s) => s.review?.done === true);
+      session.startPractice();
+      return session;
+    };
+
+    it('replays the mistake and accepts the engine move', async () => {
+      const session = await reviewed();
+      let snapshot = session.getSnapshot();
+      expect(snapshot.practice).toMatchObject({
+        status: 'try',
+        index: 0,
+        total: 1,
+        side: 1,
+        played: 'a3-a4',
+        best: null,
+      });
+      // Back before the mistake, with White to find a move and nothing given away.
+      expect(snapshot.moveNumber).toBe(0);
+      expect(snapshot.humanMoves).toHaveLength(8);
+      expect(snapshot.bestMove).toBeNull();
+      expect(snapshot.evaluation).toBeNull();
+      session.clickSquare(sq('c3'));
+      session.clickSquare(sq('c4'));
+      snapshot = session.getSnapshot();
+      expect(snapshot.practice).toMatchObject({ status: 'right', tried: 'c3-c4', best: 'c3-c4' });
+      expect(snapshot.moveNumber).toBe(1);
+      session.nextPractice();
+      expect(session.getSnapshot().practice?.status).toBe('done');
+      session.stopPractice();
+      expect(session.getSnapshot().practice).toBeNull();
+      session.stop();
+    });
+
+    it('lets the player try again, or shows the solution', async () => {
+      const session = await reviewed();
+      // h3-h4 keeps the game level, far from the +300 the best move keeps.
+      session.clickSquare(sq('h3'));
+      session.clickSquare(sq('h4'));
+      expect(session.getSnapshot().practice?.status).toBe('checking');
+      const wrong = await until(session, (s) => s.practice?.status === 'wrong');
+      expect(wrong.practice?.tried).toBe('h3-h4');
+      const again = await until(session, (s) => s.practice?.status === 'try');
+      expect(again.moveNumber).toBe(0);
+      session.showSolution();
+      const shown = session.getSnapshot();
+      expect(shown.practice).toMatchObject({ status: 'shown', best: 'c3-c4' });
+      expect(shown.bestMove).toMatchObject({ from: sq('c3'), path: [sq('c4')] });
+      // Browsing the game ends the practice.
+      session.showPly(2);
+      expect(session.getSnapshot().practice).toBeNull();
+      expect(session.getSnapshot().moveNumber).toBe(2);
+      session.stop();
+    });
   });
 
   it('reviews only finished games', () => {

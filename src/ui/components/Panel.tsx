@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { Color } from '../../engine';
 import { formatEvaluation } from '../evaluation';
 import { revealWithin } from '../scroll';
-import type { GameSession, Snapshot } from '../session';
+import type { GameSession, Practice, Snapshot } from '../session';
+import type { Translate } from '../i18n';
 import { levelKey, reasonKey, useI18n } from '../i18n';
 import { ClockFace } from './ClockFace';
 import { ReviewPanel } from './ReviewPanel';
@@ -59,7 +60,9 @@ export function Panel({ game, session, onNewGame }: PanelProps) {
   // Pieces on the board, as lichess shows "+2" next to the side that is ahead.
   const lead = (color: Color) => (color === 1 ? 1 : -1) * (whitePieces - blackPieces);
   let status = '';
-  if (game.browsing) {
+  if (game.practice) {
+    status = practiceText(game.practice, t);
+  } else if (game.browsing) {
     status = t('browsing', { n: game.moveNumber, total: game.liveMoveNumber });
   } else if (game.result) {
     const outcome = outcomeText(game.result.winner, hotseat ? null : human, t);
@@ -201,6 +204,13 @@ export function Panel({ game, session, onNewGame }: PanelProps) {
           white={sideName(1)}
           black={sideName(-1)}
           onPly={session.showPly}
+          practice={game.practice}
+          onPractice={{
+            start: session.startPractice,
+            next: session.nextPractice,
+            solution: session.showSolution,
+            stop: session.stopPractice,
+          }}
         />
       )}
 
@@ -350,4 +360,27 @@ export function Panel({ game, session, onNewGame }: PanelProps) {
       )}
     </aside>
   );
+}
+
+/** What the status line says during "Learn from your mistakes". */
+function practiceText(practice: Practice, t: Translate): string {
+  const side = t(practice.side === 1 ? 'white' : 'black');
+  const tried = practice.tried ?? '';
+  const best = practice.best ?? '';
+  switch (practice.status) {
+    case 'try':
+      return t('practiceTry', { move: practice.played, side });
+    case 'checking':
+      return t('practiceChecking');
+    case 'right':
+      return t('practiceRight', { move: tried });
+    case 'good':
+      return t('practiceGood', { move: tried, best });
+    case 'wrong':
+      return t('practiceWrong', { move: tried });
+    case 'shown':
+      return t('practiceShown', { best });
+    case 'done':
+      return practice.total === 0 ? t('practiceNone') : t('practiceDone');
+  }
 }

@@ -366,6 +366,13 @@ describe('App', () => {
       expect(within(review).queryByRole('progressbar')).not.toBeInTheDocument();
     });
     expect(within(review).getByRole('row', { name: /You/ })).toHaveTextContent('%');
+    await user.click(within(review).getByRole('button', { name: 'Learn from your mistakes' }));
+    expect(
+      within(review).getByRole('group', { name: 'Learn from your mistakes' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(/was played here|No mistakes or blunders/);
+    await user.click(within(review).getByRole('button', { name: /Stop|Close/ }));
+    expect(within(review).queryByRole('group')).not.toBeInTheDocument();
   });
 
   it('switches language', async () => {
