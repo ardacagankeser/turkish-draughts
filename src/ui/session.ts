@@ -1,5 +1,6 @@
 import type { Color, GameResult, Move, Piece, Square } from '../engine';
 import {
+  AmbiguousMoveError,
   Game,
   INITIAL_FEN,
   MAX_DRAW_OFFERS,
@@ -63,7 +64,7 @@ export type GameEvent =
   | { readonly id: number; readonly kind: 'lowTime'; readonly side: Color };
 
 /** Outcome of typing a move in notation. */
-export type NotationResult = 'played' | 'illegal' | 'not-your-turn';
+export type NotationResult = 'played' | 'illegal' | 'ambiguous' | 'not-your-turn';
 
 /** The live evaluation of the position shown, always from White's point of view. */
 export interface Evaluation {
@@ -97,6 +98,8 @@ export interface Snapshot {
   readonly selection: Selection | null;
   /** The selection is a whole move, waiting for a second click to be played. */
   readonly confirming: boolean;
+  /** The last square clicked ends several capture chains; the player must pick the way. */
+  readonly ambiguous: boolean;
   readonly thinking: boolean;
   readonly hint: Move | null;
   readonly moveList: readonly string[];
@@ -156,6 +159,7 @@ export class GameSession {
   #missedMoves = 0;
   #selection: Selection | null = null;
   #confirmMoves = false;
+  #ambiguous = false;
   #premove: Premove | null = null;
   #premoveFrom: Square | null = null;
   #premoveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -275,6 +279,7 @@ export class GameSession {
       this.#selection = null;
     }
     const result = click(this.#game.legalMoves, this.#selection, square);
+    this.#ambiguous = result.type === 'select' && result.ambiguous === true;
     if (result.type === 'play' && this.#confirmMoves) {
       // Show the whole move and wait for its piece to be clicked again.
       this.#selection = { from: result.move.from, path: result.move.path };
@@ -322,8 +327,8 @@ export class GameSession {
     let move: Move;
     try {
       move = findMove(this.#game.legalMoves, text);
-    } catch {
-      return 'illegal';
+    } catch (error) {
+      return error instanceof AmbiguousMoveError ? 'ambiguous' : 'illegal';
     }
     this.#commit(move);
     return 'played';
@@ -874,6 +879,7 @@ export class GameSession {
       humanMoves,
       selection: this.#selection,
       confirming: this.#awaitingConfirmation() !== null,
+      ambiguous: this.#ambiguous && this.#selection !== null,
       thinking: this.#thinking,
       hint: this.#hint,
       moveList: game.moveList,

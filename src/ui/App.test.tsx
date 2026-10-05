@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryStorage, fakeAi, fakeAnalysis } from '../test/fakes';
-import { HOP_MS } from './animation';
+import { HOP_MS, NORMAL_TIMING } from './animation';
 import { App } from './App';
 import { MESSAGES, detectLanguage, translator } from './i18n';
 
@@ -148,7 +148,7 @@ describe('App', () => {
     expect(container.querySelectorAll('.drawings polyline, .drawings circle')).toHaveLength(0);
   });
 
-  it('shows a capture chain step by step, and finishes it where the piece is dropped', async () => {
+  it('shows a capture chain step by step, and hops through the rest when dropped', async () => {
     const animate = vi.fn();
     HTMLElement.prototype.animate = animate;
     // After these moves White must take three pieces: d4xd6xb6xb8.
@@ -181,9 +181,43 @@ describe('App', () => {
     fireEvent.pointerUp(b8, { button: 0, pointerId: 4, clientX: -60, clientY: -60 });
     expect(screen.getByText('d4xd5xc6xb7')).toBeInTheDocument();
     expect(screen.getByRole('gridcell', { name: 'b8, white king' })).toBeInTheDocument();
-    // Dropped in place, the piece does not move again: the three jumped pieces fly off at once.
-    expect(animate).toHaveBeenCalledTimes(3);
-    for (const [, options] of animate.mock.calls) expect(options).toMatchObject({ delay: 0 });
+    // Dropped two hops away, the piece still hops through b6 from where it was chosen;
+    // the piece jumped earlier flies off with the first remaining beat.
+    expect(animate).toHaveBeenCalledTimes(4);
+    const [hop, ...flights] = animate.mock.calls;
+    expect(hop?.[0]).toHaveLength(4);
+    expect(flights.map(([, options]) => (options as KeyframeAnimationOptions).delay)).toEqual([
+      NORMAL_TIMING.vanishStart(0),
+      NORMAL_TIMING.vanishStart(0),
+      NORMAL_TIMING.vanishStart(1),
+    ]);
+    delete (HTMLElement.prototype as Partial<HTMLElement>).animate;
+  });
+
+  it('hops through every landing square when a piece is dragged straight to the end', () => {
+    const animate = vi.fn();
+    HTMLElement.prototype.animate = animate;
+    const storage = new MemoryStorage();
+    storage.setItem(
+      'turkish-draughts:v1',
+      JSON.stringify({
+        settings: { human: 1, level: 'easy' },
+        moves: ['a3-a4', 'b6-b5', 'd3-d4', 'd6-d5'],
+      }),
+    );
+    renderApp(storage);
+    const d4 = screen.getByRole('gridcell', { name: 'd4, white man' });
+    const b8 = screen.getByRole('gridcell', { name: 'b8' });
+    fireEvent.pointerDown(d4, { button: 0, pointerId: 5, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(d4, { button: 0, pointerId: 5, clientX: -60, clientY: -90 });
+    fireEvent.pointerUp(b8, { button: 0, pointerId: 5, clientX: -60, clientY: -90 });
+    expect(screen.getByText('d4xd5xc6xb7')).toBeInTheDocument();
+    const [hop, ...flights] = animate.mock.calls;
+    // Three beats from d4: each hop, then the piece it jumped flies off.
+    expect(hop?.[0]).toHaveLength(6);
+    expect(flights.map(([, options]) => (options as KeyframeAnimationOptions).delay)).toEqual(
+      [0, 1, 2].map((beat) => NORMAL_TIMING.vanishStart(beat)),
+    );
     delete (HTMLElement.prototype as Partial<HTMLElement>).animate;
   });
 

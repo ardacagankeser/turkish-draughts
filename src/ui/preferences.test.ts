@@ -57,10 +57,16 @@ describe('preferences', () => {
     expect(root.dataset.theme).toBeUndefined();
   });
 
-  it('turns animations off for reduced motion only when the speed is automatic', () => {
-    expect(animationScale('auto', false)).toBe(1);
-    expect(animationScale('auto', true)).toBe(0);
-    expect(animationScale('slow', true)).toBeGreaterThan(1);
-    expect(animationScale('none', false)).toBe(0);
+  it('scales the animations by speed, and turns them off only when asked', () => {
+    expect(animationScale('normal')).toBe(1);
+    expect(animationScale('fast')).toBeLessThan(1);
+    expect(animationScale('slow')).toBeGreaterThan(1);
+    expect(animationScale('none')).toBe(0);
+  });
+
+  it('reads the old automatic speed as normal', () => {
+    const storage = new MemoryStorage();
+    storage.setItem('turkish-draughts:preferences', JSON.stringify({ animation: 'auto' }));
+    expect(loadPreferences(storage).animation).toBe('normal');
   });
 });

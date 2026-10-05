@@ -18,7 +18,9 @@ export function Panel({ game, session, onNewGame }: PanelProps) {
   const [confirmResign, setConfirmResign] = useState(false);
   const [confirmDraw, setConfirmDraw] = useState(false);
   const [typed, setTyped] = useState('');
-  const [typedError, setTypedError] = useState<'illegal' | 'not-your-turn' | null>(null);
+  const [typedError, setTypedError] = useState<'illegal' | 'ambiguous' | 'not-your-turn' | null>(
+    null,
+  );
   const moveListEnd = useRef<HTMLOListElement>(null);
   const settings = game.settings;
   const human: Color = settings?.human ?? 1;
@@ -64,6 +66,7 @@ export function Panel({ game, session, onNewGame }: PanelProps) {
   } else if (game.thinking && !hotseat && game.turn !== human) status = t('thinking');
   else if (hotseat || game.turn === human) {
     if (game.confirming) status = t('confirmMove');
+    else if (game.ambiguous) status = t('choosePath');
     else if (game.selection && game.selection.path.length > 0) status = t('continueChain');
     else if ((game.humanMoves[0]?.captures.length ?? 0) > 0) status = t('mustCapture');
     else if (hotseat) status = t(game.turn === 1 ? 'whiteToMove' : 'blackToMove');
@@ -214,9 +217,11 @@ export function Panel({ game, session, onNewGame }: PanelProps) {
         >
           {typedError === 'illegal'
             ? t('illegalMove')
-            : typedError === 'not-your-turn'
-              ? t('notYourTurn')
-              : t('typeMoveHint')}
+            : typedError === 'ambiguous'
+              ? t('ambiguousMove')
+              : typedError === 'not-your-turn'
+                ? t('notYourTurn')
+                : t('typeMoveHint')}
         </p>
       </form>
 

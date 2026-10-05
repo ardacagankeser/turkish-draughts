@@ -81,7 +81,7 @@ export function App({
   const [preferences, setPreferences] = useState<Preferences>(() => loadPreferences(storage));
   const reducedMotion = useSyncExternalStore(subscribeReducedMotion, prefersReducedMotion);
   const boardTiming = useMemo(
-    () => timing(animationScale(preferences.animation, reducedMotion)),
+    () => timing(animationScale(preferences.animation), reducedMotion),
     [preferences.animation, reducedMotion],
   );
   const human = game.settings?.human ?? 1;

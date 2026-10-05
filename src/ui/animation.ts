@@ -16,6 +16,8 @@ export const GHOST_OPACITY = 0.35;
 export interface Timing {
   /** False when animations are turned off; every duration is then 0. */
   readonly enabled: boolean;
+  /** Reduced motion: pieces still move, but taken pieces only fade instead of flying off. */
+  readonly calm: boolean;
   readonly slide: number;
   readonly hop: number;
   readonly vanish: number;
@@ -28,13 +30,14 @@ export interface Timing {
 }
 
 /** The timings at `scale` times the normal durations (0 turns animations off). */
-export function timing(scale = 1): Timing {
+export function timing(scale = 1, calm = false): Timing {
   const slide = Math.round(SLIDE_MS * scale);
   const hop = Math.round(HOP_MS * scale);
   const vanish = Math.round(VANISH_MS * scale);
   const hopStart = (index: number) => index * (hop + vanish);
   return {
     enabled: scale > 0,
+    calm,
     slide,
     hop,
     vanish,

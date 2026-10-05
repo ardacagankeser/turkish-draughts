@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { BLACK, Game, INITIAL_FEN, NO_PROGRESS_LIMIT, WHITE, parseFen, toFen } from '.';
+import {
+  AmbiguousMoveError,
+  BLACK,
+  Game,
+  INITIAL_FEN,
+  NO_PROGRESS_LIMIT,
+  WHITE,
+  parseFen,
+  toFen,
+} from '.';
 
 describe('Game', () => {
   it('starts from the standard position with White to move', () => {
@@ -20,6 +29,12 @@ describe('Game', () => {
   it('accepts short notation when it is unambiguous', () => {
     const game = new Game('W:WKh1,e5,a2:Ba7,b7,c7,d7,e7,g7,a6,b6,c6,d6,f6,h6,a5,c5,f5');
     expect(game.play('h1xf7').path).toHaveLength(2);
+  });
+
+  it('asks for every landing square when two captures share their start and end', () => {
+    const game = new Game('W:Wd2:Bd3,c4,b5,c2,b3');
+    expect(() => game.play('d2xb6')).toThrow(AmbiguousMoveError);
+    expect(game.play('d2xb2xb4xb6').captures).toHaveLength(3);
   });
 
   it('undoes moves back to the start', () => {

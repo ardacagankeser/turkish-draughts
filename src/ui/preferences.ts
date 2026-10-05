@@ -6,7 +6,7 @@
 export const THEMES = ['system', 'light', 'dark'] as const;
 export const BOARDS = ['wood', 'classic', 'green', 'blue', 'contrast'] as const;
 export const PIECE_STYLES = ['classic', 'flat', 'contrast'] as const;
-export const ANIMATION_SPEEDS = ['auto', 'none', 'fast', 'normal', 'slow'] as const;
+export const ANIMATION_SPEEDS = ['none', 'fast', 'normal', 'slow'] as const;
 
 export type Theme = (typeof THEMES)[number];
 export type BoardStyle = (typeof BOARDS)[number];
@@ -21,7 +21,10 @@ export interface Preferences {
   /** Dots on the squares the selected piece can reach. */
   readonly legalMoves: boolean;
   readonly lastMove: boolean;
-  /** `auto` follows the system's reduced-motion setting. */
+  /**
+   * How fast moves are shown. Moves always animate unless this is `none`: they show what
+   * happened on the board. A system reduced-motion setting only calms the decoration.
+   */
   readonly animation: AnimationSpeed;
   /** A move is played only once its piece is clicked a second time (as on chess.com). */
   readonly confirmMoves: boolean;
@@ -37,7 +40,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   coordinates: true,
   legalMoves: true,
   lastMove: true,
-  animation: 'auto',
+  animation: 'normal',
   confirmMoves: false,
   volume: 0.7,
   muted: false,
@@ -111,7 +114,7 @@ export function applyPreferences(root: HTMLElement, preferences: Preferences): v
   dataset.lastMove = preferences.lastMove ? 'on' : 'off';
 }
 
-const SPEED_SCALE: Record<Exclude<AnimationSpeed, 'auto'>, number> = {
+const SPEED_SCALE: Record<AnimationSpeed, number> = {
   none: 0,
   fast: 0.6,
   normal: 1,
@@ -119,7 +122,6 @@ const SPEED_SCALE: Record<Exclude<AnimationSpeed, 'auto'>, number> = {
 };
 
 /** How much longer than normal animations last; 0 turns them off. */
-export function animationScale(speed: AnimationSpeed, reducedMotion: boolean): number {
-  if (speed === 'auto') return reducedMotion ? 0 : 1;
+export function animationScale(speed: AnimationSpeed): number {
   return SPEED_SCALE[speed];
 }

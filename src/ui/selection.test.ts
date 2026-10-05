@@ -47,6 +47,33 @@ describe('click-to-move', () => {
     expect(names(destinations(moves, { from: sq('c3'), path: [] }))).toEqual(['c4']);
   });
 
+  it('makes the player choose the way when several chains end on the clicked square', () => {
+    // d2xd4xb4xb6 and d2xb2xb4xb6 both end on b6.
+    const legal = new Game('W:Wd2:Bd3,c4,b5,c2,b3').legalMoves;
+    const start: Selection = { from: sq('d2'), path: [] };
+    expect(click(legal, start, sq('b6'))).toEqual({
+      type: 'select',
+      selection: start,
+      ambiguous: true,
+    });
+    // One landing square settles it; the end square then plays the move.
+    const step = click(legal, start, sq('d4'));
+    expect(step).toEqual({ type: 'select', selection: { from: sq('d2'), path: [sq('d4')] } });
+    const played =
+      step.type === 'select' && step.selection && click(legal, step.selection, sq('b6'));
+    expect(played && played.type === 'play' && moveToNotation(played.move)).toBe('d2xd4xb4xb6');
+  });
+
+  it('goes as far as the chains ending on the clicked square agree', () => {
+    // Both chains to b7 start with d1xd3, then part ways.
+    const legal = new Game('W:Wd1:Bd2,d4,c5,b6,c3,b4').legalMoves;
+    expect(click(legal, { from: sq('d1'), path: [] }, sq('b7'))).toEqual({
+      type: 'select',
+      selection: { from: sq('d1'), path: [sq('d3')] },
+      ambiguous: true,
+    });
+  });
+
   it('steps through a capture chain when several chains reach the same square', () => {
     // A king loop: going round either way captures the same pieces and is one move.
     const game = new Game('W:WKa1:Ba3,c5,e3,Kc1,h8');
