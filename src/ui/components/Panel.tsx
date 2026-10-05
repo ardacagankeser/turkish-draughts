@@ -5,6 +5,9 @@ import { revealWithin } from '../scroll';
 import type { GameSession, Snapshot } from '../session';
 import { levelKey, reasonKey, useI18n } from '../i18n';
 import { ClockFace } from './ClockFace';
+import { ReviewPanel } from './ReviewPanel';
+import type { ReviewedMove } from '../review';
+import { SYMBOLS, judgementKey } from '../review';
 import { outcomeText } from '../announce';
 
 interface PanelProps {
@@ -103,6 +106,11 @@ export function Panel({ game, session, onNewGame }: PanelProps) {
   };
 
   const bottom: Color = hotseat ? (game.flipped ? -1 : 1) : human;
+  const sideName = (color: Color) =>
+    hotseat ? t(color === 1 ? 'white' : 'black') : color === human ? t('you') : t('computer');
+  // Judged moves by their index in the game.
+  const judged = new Map<number, ReviewedMove>();
+  for (const move of game.review?.moves ?? []) judged.set(move.ply, move);
 
   // Moves in pairs, numbered like a score sheet: White's move, then Black's.
   const rows: [string, string | undefined][] = [];
@@ -132,9 +140,15 @@ export function Panel({ game, session, onNewGame }: PanelProps) {
         <button type="button" onClick={session.undo} disabled={!game.canUndo}>
           {t('undo')}
         </button>
-        <button type="button" onClick={session.requestHint} disabled={!humanTurn}>
-          {t('hint')}
-        </button>
+        {over && !game.review ? (
+          <button type="button" onClick={session.startReview}>
+            {t('analyseGame')}
+          </button>
+        ) : (
+          <button type="button" onClick={session.requestHint} disabled={!humanTurn}>
+            {t('hint')}
+          </button>
+        )}
         {hotseat ? (
           <button
             type="button"
@@ -179,6 +193,16 @@ export function Panel({ game, session, onNewGame }: PanelProps) {
           {t('evalBar')}
         </button>
       </section>
+
+      {game.review && (
+        <ReviewPanel
+          review={game.review}
+          moveNumber={game.moveNumber}
+          white={sideName(1)}
+          black={sideName(-1)}
+          onPly={session.showPly}
+        />
+      )}
 
       <form
         className="notation"
@@ -233,18 +257,35 @@ export function Panel({ game, session, onNewGame }: PanelProps) {
           <ol ref={moveListEnd}>
             {rows.map(([white, black], i) => {
               // The position after White's move is ply 2i + 1, after Black's 2i + 2.
-              const cell = (notation: string, ply: number) => (
-                <button
-                  type="button"
-                  className="move"
-                  aria-current={game.moveNumber === ply}
-                  onClick={() => {
-                    session.showPly(ply);
-                  }}
-                >
-                  {notation}
-                </button>
-              );
+              const cell = (notation: string, ply: number) => {
+                const move = judged.get(ply - 1);
+                const symbol = move ? SYMBOLS[move.judgement] : undefined;
+                const label =
+                  move && move.judgement !== 'good' ? t(judgementKey(move.judgement)) : '';
+                const bestShown = game.review?.bestMoves[ply - 1];
+                const better =
+                  move?.best && bestShown && move.best !== move.played
+                    ? t('bestWas', { move: bestShown })
+                    : '';
+                return (
+                  <button
+                    type="button"
+                    className={`move${move ? ` ${move.judgement}` : ''}`}
+                    aria-current={game.moveNumber === ply}
+                    title={[label, better].filter(Boolean).join('. ') || undefined}
+                    onClick={() => {
+                      session.showPly(ply);
+                    }}
+                  >
+                    {notation}
+                    {symbol && (
+                      <span className="symbol" aria-label={label}>
+                        {symbol}
+                      </span>
+                    )}
+                  </button>
+                );
+              };
               return (
                 <li key={i}>
                   {cell(white, 2 * i + 1)}

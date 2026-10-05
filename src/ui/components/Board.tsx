@@ -27,7 +27,8 @@ interface BoardProps {
   readonly moveNumber: number;
   readonly legalMoves: readonly Move[];
   readonly selection: Selection | null;
-  readonly hint: Move | null;
+  /** A move to point at with an arrow: a hint, or the engine's choice in a review. */
+  readonly hint: { readonly from: Square; readonly path: readonly Square[] } | null;
   readonly flipped: boolean;
   readonly premove: Premove | null;
   readonly premoveFrom: Square | null;

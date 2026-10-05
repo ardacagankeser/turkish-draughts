@@ -4,9 +4,20 @@ import type {
   AnalysisRequest,
   AnalysisUpdate,
   AnalysisWorkerLike,
+  ReviewRequest,
+  ReviewUpdate,
+  ReviewWorkerLike,
   WorkerLike,
 } from '../ai';
-import { AiClient, AnalysisClient, Searcher, analyse, handleRequest } from '../ai';
+import {
+  AiClient,
+  AnalysisClient,
+  ReviewClient,
+  Searcher,
+  analyse,
+  handleRequest,
+  review,
+} from '../ai';
 
 /** Runs requests through the real AI synchronously, in place of a Web Worker. */
 export class FakeWorker implements WorkerLike {
@@ -61,6 +72,33 @@ export class FakeAnalysisWorker implements AnalysisWorkerLike {
 
 export const fakeAnalysis = (): AnalysisClient =>
   new AnalysisClient(() => new FakeAnalysisWorker());
+
+/** Runs the real game review, kept shallow so tests stay fast. */
+export class FakeReviewWorker implements ReviewWorkerLike {
+  onmessage: ((event: MessageEvent<ReviewUpdate>) => void) | null = null;
+  terminated = false;
+  #current = 0;
+  readonly #searcher = new Searcher(16);
+
+  postMessage(message: ReviewRequest | AnalysisRequest): void {
+    this.#current = message.type === 'review' ? message.id : 0;
+    if (message.type !== 'review' || this.terminated) return;
+    void review(
+      this.#searcher,
+      { ...message, maxDepth: Math.min(message.maxDepth, 2), timeMs: 50 },
+      (update) => {
+        if (!this.terminated) this.onmessage?.({ data: update } as MessageEvent<ReviewUpdate>);
+      },
+      () => this.#current === message.id && !this.terminated,
+    );
+  }
+
+  terminate(): void {
+    this.terminated = true;
+  }
+}
+
+export const fakeReview = (): ReviewClient => new ReviewClient(() => new FakeReviewWorker());
 
 /** An in-memory `Storage`. */
 export class MemoryStorage implements Storage {

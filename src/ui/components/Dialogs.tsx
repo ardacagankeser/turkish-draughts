@@ -408,12 +408,14 @@ export function GameOverDialog({
   human,
   onPlayAgain,
   onClose,
+  onReview,
 }: {
   result: GameResult;
   /** The player's side, or `null` with two players. */
   human: Color | null;
   onPlayAgain: () => void;
   onClose: () => void;
+  onReview: () => void;
 }) {
   const { t } = useI18n();
   const title = outcomeText(result.winner, human, t);
@@ -423,6 +425,9 @@ export function GameOverDialog({
       <div className="actions">
         <button type="button" onClick={onClose}>
           {t('close')}
+        </button>
+        <button type="button" onClick={onReview}>
+          {t('analyseGame')}
         </button>
         <button type="button" className="primary" onClick={onPlayAgain}>
           {t('playAgain')}

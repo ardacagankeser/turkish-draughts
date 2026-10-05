@@ -14,3 +14,7 @@ export type { AnalysisOptions, AnalysisWorkerLike } from './analysis-client';
 export { analyse, isAnalysisRequest } from './analysis';
 export type { AnalysisRequest, AnalysisUpdate } from './analysis';
 export { WIN_CURVE_K, expectedScore, winningChances } from './winning-chances';
+export { isReviewRequest, review, reviewTime } from './review';
+export type { ReviewDone, ReviewPosition, ReviewRequest, ReviewUpdate } from './review';
+export { ReviewClient } from './review-client';
+export type { ReviewOptions, ReviewWorkerLike } from './review-client';

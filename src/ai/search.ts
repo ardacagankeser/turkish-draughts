@@ -25,6 +25,8 @@ export interface SearchOptions {
   readonly randomMargin?: number;
   /** Random source for `randomMargin`; defaults to `Math.random`. */
   readonly random?: () => number;
+  /** Root moves to leave out, to find the best of the others (game review). */
+  readonly exclude?: (move: Move) => boolean;
 }
 
 export interface SearchResult {
@@ -93,7 +95,9 @@ export class Searcher {
     this.#canAbort = false;
     this.#nodes = 0;
 
-    const rootMoves = game.isOver ? [] : generateMoves(this.#board);
+    const exclude = options.exclude;
+    const all = game.isOver ? [] : generateMoves(this.#board);
+    const rootMoves = exclude ? all.filter((move) => !exclude(move)) : all;
     if (rootMoves.length === 0) {
       return { move: null, score: 0, depth: 0, nodes: 0, timeMs: 0, pv: [] };
     }

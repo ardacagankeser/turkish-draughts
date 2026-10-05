@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import { AiClient, AnalysisClient } from '../ai';
+import { AiClient, AnalysisClient, ReviewClient } from '../ai';
 import { Board } from './components/Board';
 import { EvalBar } from './components/EvalBar';
 import {
@@ -26,6 +26,8 @@ interface AppProps {
   readonly createAi?: () => AiClient;
   /** Creates the live analysis client; tests pass one backed by a fake worker. */
   readonly createAnalysis?: () => AnalysisClient;
+  /** Creates the game review client; tests pass one backed by a fake worker. */
+  readonly createReview?: () => ReviewClient;
   /** Plays sounds; tests pass one without audio. */
   readonly createSound?: () => SoundPlayer;
   readonly storage?: Storage;
@@ -53,6 +55,7 @@ function initialLanguage(storage: Storage): Language {
 export function App({
   createAi,
   createAnalysis,
+  createReview,
   createSound,
   storage = globalThis.localStorage,
 }: AppProps) {
@@ -62,6 +65,8 @@ export function App({
         createAi?.() ?? new AiClient(),
         storage,
         createAnalysis?.() ?? new AnalysisClient(),
+        undefined,
+        createReview?.() ?? new ReviewClient(),
       ),
   );
   const game = useSyncExternalStore(session.subscribe, session.getSnapshot);
@@ -249,7 +254,7 @@ export function App({
                 moveNumber={game.moveNumber}
                 legalMoves={game.humanMoves}
                 selection={game.selection}
-                hint={game.hint}
+                hint={game.hint ?? game.bestMove}
                 flipped={game.flipped}
                 premove={game.premove}
                 premoveFrom={game.premoveFrom}
@@ -328,6 +333,10 @@ export function App({
             }}
             onClose={() => {
               setClosedResult(game.resultId);
+            }}
+            onReview={() => {
+              setClosedResult(game.resultId);
+              session.startReview();
             }}
           />
         )}
