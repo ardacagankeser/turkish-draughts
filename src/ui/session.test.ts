@@ -349,6 +349,54 @@ describe('GameSession', () => {
     });
   });
 
+  describe('events, notation and taken pieces', () => {
+    it('reports a start, each move with its mover, and the end', async () => {
+      const { session } = started();
+      expect(session.getSnapshot().event).toMatchObject({ kind: 'start' });
+      session.clickSquare(sq('c3'));
+      session.clickSquare(sq('c4'));
+      expect(session.getSnapshot().event).toMatchObject({
+        kind: 'move',
+        by: 'human',
+        notation: 'c3-c4',
+        captures: 0,
+      });
+      const reply = await until(session, (s) => s.moveList.length === 2);
+      expect(reply.event).toMatchObject({ kind: 'move', by: 'computer' });
+      session.resign();
+      expect(session.getSnapshot().event).toMatchObject({
+        kind: 'end',
+        result: { reason: 'resignation' },
+      });
+    });
+
+    it('counts captures and the pieces each side has taken', () => {
+      const storage = new MemoryStorage();
+      storage.setItem(
+        'turkish-draughts:v1',
+        JSON.stringify({
+          settings: { human: 1, level: 'easy' },
+          moves: ['a3-a4', 'b6-b5', 'd3-d4', 'd6-d5'],
+        }),
+      );
+      const session = new GameSession(fakeAi(), storage, fakeAnalysis());
+      expect(session.playNotation('d4xb8')).toBe('played');
+      const snapshot = session.getSnapshot();
+      expect(snapshot.event).toMatchObject({ kind: 'move', captures: 3, promotes: true });
+      expect(snapshot.taken.white).toEqual([-1, -1, -1]);
+      expect(snapshot.taken.black).toEqual([]);
+      session.stop();
+    });
+
+    it('rejects illegal notation and moves out of turn', () => {
+      const { session } = started();
+      expect(session.playNotation('a2-a3')).toBe('illegal');
+      expect(session.playNotation('nonsense')).toBe('illegal');
+      expect(session.playNotation('c3-c4')).toBe('played');
+      expect(session.playNotation('d3-d4')).toBe('not-your-turn');
+    });
+  });
+
   it('ends the game on resignation', () => {
     const { session } = started();
     session.resign();

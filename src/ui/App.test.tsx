@@ -187,6 +187,46 @@ describe('App', () => {
     expect(container.querySelector('.board')).toHaveClass('keyboard');
   });
 
+  it('has keyboard shortcuts and a help dialog that gives the focus back', async () => {
+    const { user, container } = renderApp();
+    await user.click(screen.getByRole('button', { name: 'Start game' }));
+    const coordinate = () => container.querySelector('.coord.file')?.textContent;
+    expect(coordinate()).toBe('a');
+    await user.keyboard('f');
+    expect(coordinate()).toBe('h');
+
+    const help = screen.getByRole('button', { name: 'Keyboard shortcuts' });
+    await user.click(help);
+    const dialog = screen.getByRole('dialog', { name: 'Keyboard shortcuts' });
+    expect(dialog).toHaveTextContent('Flip board');
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(help).toHaveFocus();
+
+    await user.keyboard('n');
+    expect(screen.getByRole('dialog', { name: 'New game' })).toBeInTheDocument();
+  });
+
+  it('plays a typed move and announces it', async () => {
+    const { user } = renderApp();
+    await user.click(screen.getByRole('button', { name: 'Start game' }));
+    const input = screen.getByRole('textbox', { name: 'Type a move' });
+    await user.type(input, 'a2-a3{Enter}');
+    expect(screen.getByRole('alert')).toHaveTextContent('not a legal move');
+    await user.clear(input);
+    await user.type(input, 'c3-c4{Enter}');
+    expect(screen.getByText('c3-c4')).toBeInTheDocument();
+    expect(input).toHaveValue('');
+    await waitFor(
+      () => {
+        expect(document.querySelector('[aria-live="polite"].visually-hidden')).toHaveTextContent(
+          /Computer played/,
+        );
+      },
+      { timeout: 3000 },
+    );
+  });
+
   it('switches language', async () => {
     const { user } = renderApp();
     await user.click(screen.getByRole('button', { name: 'TR' }));

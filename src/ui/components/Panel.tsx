@@ -14,6 +14,8 @@ interface PanelProps {
 export function Panel({ game, session, onNewGame }: PanelProps) {
   const { t } = useI18n();
   const [confirmResign, setConfirmResign] = useState(false);
+  const [typed, setTyped] = useState('');
+  const [typedError, setTypedError] = useState<'illegal' | 'not-your-turn' | null>(null);
   const moveListEnd = useRef<HTMLOListElement>(null);
   const settings = game.settings;
   const human: Color = settings?.human ?? 1;
@@ -41,8 +43,9 @@ export function Panel({ game, session, onNewGame }: PanelProps) {
 
   const whitePieces = game.pieces.filter((p) => p.piece > 0).length;
   const blackPieces = game.pieces.length - whitePieces;
-  const capturedBy = (color: Color) => 16 - (color === 1 ? blackPieces : whitePieces);
-
+  const takenBy = (color: Color) => (color === 1 ? game.taken.white : game.taken.black);
+  // Pieces on the board, as lichess shows "+2" next to the side that is ahead.
+  const lead = (color: Color) => (color === 1 ? 1 : -1) * (whitePieces - blackPieces);
   let status = '';
   if (game.browsing) {
     status = t('browsing', { n: game.moveNumber, total: game.liveMoveNumber });
@@ -73,8 +76,19 @@ export function Panel({ game, session, onNewGame }: PanelProps) {
           {isHuman ? t('you') : t('computer')}
           {!isHuman && settings && <small> · {t(levelKey(settings.level))}</small>}
         </span>
-        <span className="player-captured" title={t('captured')}>
-          {capturedBy(color)}
+        <span className="taken" aria-label={`${t('takenPieces')}: ${takenBy(color).length}`}>
+          {takenBy(color).map((piece, i) => (
+            <span
+              key={i}
+              className={`mini ${piece > 0 ? 'white' : 'black'}${piece === 2 || piece === -2 ? ' king' : ''}`}
+              aria-hidden="true"
+            />
+          ))}
+          {lead(color) > 0 && (
+            <span className="lead" title={t('ahead', { n: lead(color) })}>
+              +{lead(color)}
+            </span>
+          )}
         </span>
       </div>
     );
@@ -136,6 +150,48 @@ export function Panel({ game, session, onNewGame }: PanelProps) {
           {t('evalBar')}
         </button>
       </section>
+
+      <form
+        className="notation"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const result = session.playNotation(typed);
+          setTypedError(result === 'played' ? null : result);
+          if (result === 'played') setTyped('');
+        }}
+      >
+        <label htmlFor="notation-input">{t('typeMove')}</label>
+        <div className="notation-row">
+          <input
+            id="notation-input"
+            type="text"
+            autoComplete="off"
+            spellCheck={false}
+            value={typed}
+            placeholder="c3-c4"
+            aria-describedby="notation-help"
+            aria-invalid={typedError !== null}
+            onChange={(event) => {
+              setTyped(event.target.value);
+              setTypedError(null);
+            }}
+          />
+          <button type="submit" disabled={typed.trim() === ''}>
+            {t('play')}
+          </button>
+        </div>
+        <p
+          id="notation-help"
+          className={typedError ? 'error' : 'help'}
+          role={typedError ? 'alert' : undefined}
+        >
+          {typedError === 'illegal'
+            ? t('illegalMove')
+            : typedError === 'not-your-turn'
+              ? t('notYourTurn')
+              : t('typeMoveHint')}
+        </p>
+      </form>
 
       <section className="moves">
         <h2>{t('moves')}</h2>

@@ -2,11 +2,13 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { AiClient, AnalysisClient } from '../ai';
 import { Board } from './components/Board';
 import { EvalBar } from './components/EvalBar';
-import { GameOverDialog, NewGameDialog } from './components/Dialogs';
+import { GameOverDialog, NewGameDialog, ShortcutsDialog } from './components/Dialogs';
 import { Panel } from './components/Panel';
 import type { Language } from './i18n';
 import { I18nContext, LANGUAGES, detectLanguage, translator } from './i18n';
+import { describeEvent } from './announce';
 import { GameSession } from './session';
+import { SoundPlayer } from './sound';
 import { loadLanguage, saveLanguage } from './storage';
 
 const REPOSITORY = 'https://github.com/ardacagankeser/turkish-draughts';
@@ -16,6 +18,8 @@ interface AppProps {
   readonly createAi?: () => AiClient;
   /** Creates the live analysis client; tests pass one backed by a fake worker. */
   readonly createAnalysis?: () => AnalysisClient;
+  /** Plays sounds; tests pass one without audio. */
+  readonly createSound?: () => SoundPlayer;
   readonly storage?: Storage;
 }
 
@@ -24,7 +28,12 @@ function initialLanguage(storage: Storage): Language {
   return saved === 'tr' || saved === 'en' ? saved : detectLanguage();
 }
 
-export function App({ createAi, createAnalysis, storage = globalThis.localStorage }: AppProps) {
+export function App({
+  createAi,
+  createAnalysis,
+  createSound,
+  storage = globalThis.localStorage,
+}: AppProps) {
   const [session] = useState(
     () =>
       new GameSession(
@@ -44,6 +53,30 @@ export function App({ createAi, createAnalysis, storage = globalThis.localStorag
   const { t } = i18n;
 
   const [choosing, setChoosing] = useState(game.settings === null);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [sound] = useState(() => createSound?.() ?? new SoundPlayer(storage));
+  const [muted, setMuted] = useState(sound.muted);
+  const human = game.settings?.human ?? 1;
+
+  // Browsers allow audio only after a user gesture.
+  useEffect(() => {
+    const unlock = () => {
+      sound.unlock();
+    };
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('keydown', unlock);
+    return () => {
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+  }, [sound]);
+
+  // One sound per game event (move, capture, promotion, start, end).
+  useEffect(() => {
+    if (game.event) sound.play(game.event, human);
+    // Only when a new event arrives.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game.event]);
   // The game-over dialog shows once per ending, until the player closes it.
   // A game that was already over when the page loaded does not reopen the dialog;
   // the status line shows its result.
@@ -52,18 +85,32 @@ export function App({ createAi, createAnalysis, storage = globalThis.localStorag
   // ← → Home End browse the moves, as on lichess. The board's own arrow-key focus
   // movement, text fields and open dialogs keep their keys.
   useEffect(() => {
-    const keys: Record<string, () => void> = {
+    const browse: Record<string, () => void> = {
       ArrowLeft: session.showPrevious,
       ArrowRight: session.showNext,
       Home: session.showFirst,
       End: session.showLive,
     };
+    const letters: Record<string, () => void> = {
+      f: session.flip,
+      h: session.requestHint,
+      u: session.undo,
+      n: () => {
+        setChoosing(true);
+      },
+      '?': () => {
+        setHelpOpen(true);
+      },
+    };
     const onKeyDown = (event: KeyboardEvent) => {
-      const action = keys[event.key];
+      if (event.altKey || event.ctrlKey || event.metaKey) return;
       const target = event.target instanceof Element ? event.target : null;
-      if (!action || event.altKey || event.ctrlKey || event.metaKey) return;
-      if (target?.closest('.board, input, textarea, select, [role="dialog"]')) return;
+      if (target?.closest('input, textarea, select, [role="dialog"]')) return;
       if (document.querySelector('[role="dialog"]')) return;
+      // The board's own arrow keys move the focus between squares.
+      const action =
+        browse[event.key] && !target?.closest('.board') ? browse[event.key] : letters[event.key];
+      if (!action) return;
       event.preventDefault();
       action();
     };
@@ -87,21 +134,52 @@ export function App({ createAi, createAnalysis, storage = globalThis.localStorag
             <h1>{t('title')}</h1>
             <p className="subtitle">{t('subtitle')}</p>
           </div>
-          <div className="language" role="group" aria-label={t('language')}>
-            {LANGUAGES.map((code) => (
-              <button
-                key={code}
-                type="button"
-                aria-pressed={language === code}
-                onClick={() => {
-                  setLanguage(code);
-                }}
-              >
-                {code.toUpperCase()}
-              </button>
-            ))}
+          <div className="header-tools">
+            <button
+              type="button"
+              className="icon-button"
+              aria-pressed={!muted}
+              aria-label={t('sound')}
+              title={t('sound')}
+              onClick={() => {
+                sound.setMuted(!muted);
+                setMuted(!muted);
+              }}
+            >
+              {muted ? '🔇' : '🔊'}
+            </button>
+            <button
+              type="button"
+              className="icon-button"
+              aria-label={t('shortcuts')}
+              title={t('shortcuts')}
+              onClick={() => {
+                setHelpOpen(true);
+              }}
+            >
+              ?
+            </button>
+            <div className="language" role="group" aria-label={t('language')}>
+              {LANGUAGES.map((code) => (
+                <button
+                  key={code}
+                  type="button"
+                  aria-pressed={language === code}
+                  onClick={() => {
+                    setLanguage(code);
+                  }}
+                >
+                  {code.toUpperCase()}
+                </button>
+              ))}
+            </div>
           </div>
         </header>
+
+        {/* Screen readers hear each move, capture, promotion and result. */}
+        <div className="visually-hidden" aria-live="polite" aria-atomic="true">
+          {game.event && <span key={game.event.id}>{describeEvent(game.event, human, t)}</span>}
+        </div>
 
         <main className="layout">
           <div className="board-area">
@@ -146,6 +224,13 @@ export function App({ createAi, createAnalysis, storage = globalThis.localStorag
           <a href={REPOSITORY}>GitHub</a>
         </footer>
 
+        {helpOpen && (
+          <ShortcutsDialog
+            onClose={() => {
+              setHelpOpen(false);
+            }}
+          />
+        )}
         {choosing && (
           <NewGameDialog
             initial={game.settings}

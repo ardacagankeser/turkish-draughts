@@ -1,5 +1,14 @@
-import type { Color, GameResult, Move, Square } from '../engine';
-import { Game, INITIAL_FEN, MAX_DRAW_OFFERS, findMove, moveToNotation, opponent } from '../engine';
+import type { Color, GameResult, Move, Piece, Square } from '../engine';
+import {
+  Game,
+  INITIAL_FEN,
+  MAX_DRAW_OFFERS,
+  findMove,
+  isKing,
+  moveToNotation,
+  opponent,
+  rankOf,
+} from '../engine';
 import type { AiClient, Level } from '../ai';
 import { AnalysisClient, MATE } from '../ai';
 import type { UiPiece } from './pieces';
@@ -22,7 +31,33 @@ export interface Premove {
 const NOTICE_MS = 2200;
 const HINT_LEVEL: Level = 'hard';
 
-export type Notice = 'drawAccepted' | 'drawDeclined' | 'dama';
+export type Notice = 'drawAccepted' | 'drawDeclined' | 'dama' | 'damaAlti';
+
+/**
+ * Something that just happened, for sounds and screen-reader announcements. `id` grows
+ * with every event, so a listener reacts once per event.
+ */
+export type GameEvent =
+  | { readonly id: number; readonly kind: 'start' }
+  | {
+      readonly id: number;
+      readonly kind: 'move';
+      readonly by: 'human' | 'computer';
+      /** TÜDAF notation, as in the move list. */
+      readonly notation: string;
+      readonly captures: number;
+      readonly promotes: boolean;
+      /** A man reached the rank before promotion ("dama altı", a TÜDAF courtesy call). */
+      readonly damaAlti: boolean;
+      /** After this move the human must capture. */
+      readonly mustCapture: boolean;
+      /** Set when this move ended the game. */
+      readonly result: GameResult | null;
+    }
+  | { readonly id: number; readonly kind: 'end'; readonly result: GameResult };
+
+/** Outcome of typing a move in notation. */
+export type NotationResult = 'played' | 'illegal' | 'not-your-turn';
 
 /** The live evaluation of the position shown, always from White's point of view. */
 export interface Evaluation {
@@ -73,6 +108,9 @@ export interface Snapshot {
   readonly premovable: readonly Square[];
   /** Pieces jumped by the part of a capture chain chosen so far (shown as ghosts). */
   readonly ghosts: readonly Square[];
+  /** Pieces each side has taken, up to the position shown. */
+  readonly taken: { readonly white: readonly Piece[]; readonly black: readonly Piece[] };
+  readonly event: GameEvent | null;
 }
 
 type Listener = () => void;
@@ -110,6 +148,8 @@ export class GameSession {
   #premove: Premove | null = null;
   #premoveFrom: Square | null = null;
   #premoveTimer: ReturnType<typeof setTimeout> | undefined;
+  #event: GameEvent | null = null;
+  #eventId = 0;
   #thinking = false;
   #hint: Move | null = null;
   #drawOffers: number;
@@ -208,8 +248,25 @@ export class GameSession {
     this.#evaluation = null;
     this.#flipped = settings.human === -1;
     this.#setNotice(null);
+    this.#event = { id: ++this.#eventId, kind: 'start' };
     void this.#ai.newGame().catch(() => undefined);
     this.#reset();
+  };
+
+  /**
+   * Plays a move typed in landing notation (`c3-c4`, `d4xd6xb6`), or just its start and end
+   * squares when that is unambiguous (`d4xb8`).
+   */
+  readonly playNotation = (text: string): NotationResult => {
+    if (!this.#canPlay()) return 'not-your-turn';
+    let move: Move;
+    try {
+      move = findMove(this.#game.legalMoves, text);
+    } catch {
+      return 'illegal';
+    }
+    this.#commit(move);
+    return 'played';
   };
 
   /** Takes back the last move pair. A finished game is final and cannot be taken back. */
@@ -256,6 +313,8 @@ export class GameSession {
         if (accepted) {
           this.#game.agreeDraw();
           this.#resultId++;
+          if (this.#game.result)
+            this.#event = { id: ++this.#eventId, kind: 'end', result: this.#game.result };
           this.#refreshEvaluation();
         }
         this.#setNotice(accepted ? 'drawAccepted' : 'drawDeclined');
@@ -272,6 +331,8 @@ export class GameSession {
     this.#cancelAi();
     this.#game.resign(this.#settings.human);
     this.#resultId++;
+    if (this.#game.result)
+      this.#event = { id: ++this.#eventId, kind: 'end', result: this.#game.result };
     this.#refreshEvaluation();
     this.#save();
     this.#emit();
@@ -439,7 +500,11 @@ export class GameSession {
   }
 
   #commit(move: Move): void {
+    const mover = this.#game.turn;
     const played = this.#game.play(move);
+    const landed = this.#game.board.get(played.to);
+    const damaAlti =
+      !isKing(landed) && rankOf(played.to) === (mover === 1 ? 6 : 1) && !played.promotes;
     const next = applyMove(this.#pieces, played);
     this.#pieces = next.pieces;
     this.#captured = next.captured;
@@ -447,6 +512,20 @@ export class GameSession {
     this.#selection = null;
     this.#hint = null;
     if (played.promotes && !this.#view) this.#setNotice('dama');
+    else if (damaAlti && !this.#view) this.#setNotice('damaAlti');
+    const nextMoves = this.#game.isOver ? [] : this.#game.legalMoves;
+    this.#event = {
+      id: ++this.#eventId,
+      kind: 'move',
+      by: mover === this.#settings?.human ? 'human' : 'computer',
+      notation: this.#game.moveList.at(-1) ?? '',
+      captures: played.captures.length,
+      promotes: played.promotes,
+      damaAlti,
+      mustCapture:
+        this.#game.turn === this.#settings?.human && (nextMoves[0]?.captures.length ?? 0) > 0,
+      result: this.#game.result,
+    };
     if (this.#game.isOver) this.#resultId++;
     // While browsing, the shown position (and its analysis) stays; the move is counted.
     if (this.#view) this.#missedMoves++;
@@ -583,6 +662,16 @@ export class GameSession {
     for (const listener of this.#listeners) listener();
   }
 
+  /** Pieces taken by each side in the moves up to the position shown. White moves first. */
+  #taken(): Snapshot['taken'] {
+    const white: Piece[] = [];
+    const black: Piece[] = [];
+    this.#game.history.slice(0, this.#displayedPly()).forEach((move, i) => {
+      (i % 2 === 0 ? white : black).push(...move.capturedPieces);
+    });
+    return { white, black };
+  }
+
   #build(): Snapshot {
     const game = this.#game;
     const human = this.#settings?.human ?? 1;
@@ -628,6 +717,8 @@ export class GameSession {
         : [],
       ghosts:
         this.#selection && humanMoves.length > 0 ? jumpedSoFar(humanMoves, this.#selection) : [],
+      taken: this.#taken(),
+      event: this.#event,
     };
   }
 }
