@@ -5,6 +5,7 @@ import { revealWithin } from '../scroll';
 import type { GameSession, Snapshot } from '../session';
 import { levelKey, reasonKey, useI18n } from '../i18n';
 import { ClockFace } from './ClockFace';
+import { outcomeText } from '../announce';
 
 interface PanelProps {
   readonly game: Snapshot;
@@ -15,13 +16,16 @@ interface PanelProps {
 export function Panel({ game, session, onNewGame }: PanelProps) {
   const { t } = useI18n();
   const [confirmResign, setConfirmResign] = useState(false);
+  const [confirmDraw, setConfirmDraw] = useState(false);
   const [typed, setTyped] = useState('');
   const [typedError, setTypedError] = useState<'illegal' | 'not-your-turn' | null>(null);
   const moveListEnd = useRef<HTMLOListElement>(null);
   const settings = game.settings;
   const human: Color = settings?.human ?? 1;
+  // Two players on one device: both sides are human, named by colour.
+  const hotseat = settings?.opponent === 'human';
   const over = game.result !== null;
-  const humanTurn = !over && game.turn === human && !game.thinking;
+  const humanTurn = !over && (hotseat || game.turn === human) && !game.thinking;
 
   // Keep the move shown in view: the newest one while playing, the chosen one while browsing.
   useEffect(() => {
@@ -32,15 +36,17 @@ export function Panel({ game, session, onNewGame }: PanelProps) {
     else if (!game.browsing) list.scrollTop = list.scrollHeight;
   }, [game.moveNumber, game.moveList.length, game.browsing]);
 
+  // A confirmation that is not given within a few seconds lapses.
   useEffect(() => {
-    if (!confirmResign) return;
+    if (!confirmResign && !confirmDraw) return;
     const timer = setTimeout(() => {
       setConfirmResign(false);
+      setConfirmDraw(false);
     }, 4000);
     return () => {
       clearTimeout(timer);
     };
-  }, [confirmResign]);
+  }, [confirmResign, confirmDraw]);
 
   const whitePieces = game.pieces.filter((p) => p.piece > 0).length;
   const blackPieces = game.pieces.length - whitePieces;
@@ -51,20 +57,16 @@ export function Panel({ game, session, onNewGame }: PanelProps) {
   if (game.browsing) {
     status = t('browsing', { n: game.moveNumber, total: game.liveMoveNumber });
   } else if (game.result) {
-    const outcome =
-      game.result.winner === null
-        ? t('draw')
-        : game.result.winner === human
-          ? t('youWin')
-          : t('youLose');
+    const outcome = outcomeText(game.result.winner, hotseat ? null : human, t);
     // "Game over: You lose. By resignation." The outcome may already end with "!".
     const head = `${t('gameOver')}: ${outcome}`;
     status = `${/[.!?]$/.test(head) ? head : `${head}.`} ${t(reasonKey(game.result))}`;
-  } else if (game.thinking && game.turn !== human) status = t('thinking');
-  else if (game.turn === human) {
+  } else if (game.thinking && !hotseat && game.turn !== human) status = t('thinking');
+  else if (hotseat || game.turn === human) {
     if (game.confirming) status = t('confirmMove');
     else if (game.selection && game.selection.path.length > 0) status = t('continueChain');
     else if ((game.humanMoves[0]?.captures.length ?? 0) > 0) status = t('mustCapture');
+    else if (hotseat) status = t(game.turn === 1 ? 'whiteToMove' : 'blackToMove');
     else status = t('yourTurn');
   }
 
@@ -75,8 +77,8 @@ export function Panel({ game, session, onNewGame }: PanelProps) {
       <div className={`player${active ? ' active' : ''}`}>
         <span className={`swatch ${color === 1 ? 'white' : 'black'}`} aria-hidden="true" />
         <span className="player-name">
-          {isHuman ? t('you') : t('computer')}
-          {!isHuman && settings && <small> · {t(levelKey(settings.level))}</small>}
+          {hotseat ? t(color === 1 ? 'white' : 'black') : isHuman ? t('you') : t('computer')}
+          {!hotseat && !isHuman && settings && <small> · {t(levelKey(settings.level))}</small>}
         </span>
         <span className="taken" aria-label={`${t('takenPieces')}: ${takenBy(color).length}`}>
           {takenBy(color).map((piece, i) => (
@@ -97,6 +99,8 @@ export function Panel({ game, session, onNewGame }: PanelProps) {
     );
   };
 
+  const bottom: Color = hotseat ? (game.flipped ? -1 : 1) : human;
+
   // Moves in pairs, numbered like a score sheet: White's move, then Black's.
   const rows: [string, string | undefined][] = [];
   for (let i = 0; i < game.moveList.length; i += 2) {
@@ -106,12 +110,15 @@ export function Panel({ game, session, onNewGame }: PanelProps) {
   return (
     <aside className="panel">
       <section className="players" aria-label={t('you')}>
-        {player(-human as Color)}
-        {player(human)}
+        {/* The side at the bottom of the board is listed last, nearest to it. */}
+        {player(-bottom as Color)}
+        {player(bottom)}
       </section>
 
       <p className={`status${over ? ' over' : ''}`} role="status" aria-live="polite">
-        {game.thinking && game.turn !== human && <span className="spinner" aria-hidden="true" />}
+        {game.thinking && !hotseat && game.turn !== human && (
+          <span className="spinner" aria-hidden="true" />
+        )}
         {status}
       </p>
 
@@ -125,14 +132,30 @@ export function Panel({ game, session, onNewGame }: PanelProps) {
         <button type="button" onClick={session.requestHint} disabled={!humanTurn}>
           {t('hint')}
         </button>
-        <button
-          type="button"
-          onClick={session.offerDraw}
-          disabled={!humanTurn || game.drawOffersLeft === 0}
-          title={t('drawOffersLeft', { n: game.drawOffersLeft })}
-        >
-          {t('offerDraw')} <small>({game.drawOffersLeft})</small>
-        </button>
+        {hotseat ? (
+          <button
+            type="button"
+            className={confirmDraw ? 'danger' : ''}
+            disabled={!humanTurn}
+            onClick={() => {
+              if (confirmDraw) {
+                setConfirmDraw(false);
+                session.offerDraw();
+              } else setConfirmDraw(true);
+            }}
+          >
+            {confirmDraw ? t('confirmDraw') : t('agreeDraw')}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={session.offerDraw}
+            disabled={!humanTurn || game.drawOffersLeft === 0}
+            title={t('drawOffersLeft', { n: game.drawOffersLeft })}
+          >
+            {t('offerDraw')} <small>({game.drawOffersLeft})</small>
+          </button>
+        )}
         <button
           type="button"
           className={confirmResign ? 'danger' : ''}

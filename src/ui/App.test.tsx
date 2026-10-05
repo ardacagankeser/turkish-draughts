@@ -283,6 +283,23 @@ describe('App', () => {
     expect(screen.queryByRole('timer')).not.toBeInTheDocument();
   });
 
+  it('plays two players on one device, named by colour', async () => {
+    const { user } = renderApp();
+    await user.click(screen.getByRole('radio', { name: 'Two players' }));
+    expect(screen.queryByRole('radio', { name: 'Black' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('checkbox', { name: 'Turn the board after every move' }));
+    await user.click(screen.getByRole('button', { name: 'Start game' }));
+    expect(screen.getByRole('status')).toHaveTextContent('White to move');
+    await user.click(screen.getByRole('gridcell', { name: 'c3, white man' }));
+    await user.click(screen.getByRole('gridcell', { name: 'c4' }));
+    expect(screen.getByRole('status')).toHaveTextContent('Black to move');
+    expect(screen.queryByRole('button', { name: /Offer draw/ })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Agree a draw' }));
+    await user.click(screen.getByRole('button', { name: 'Both agree?' }));
+    expect(screen.getByRole('dialog', { name: 'Draw' })).toBeInTheDocument();
+  });
+
   it('switches language', async () => {
     const { user } = renderApp();
     await user.click(screen.getByRole('button', { name: 'TR' }));

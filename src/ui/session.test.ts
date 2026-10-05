@@ -502,6 +502,75 @@ describe('GameSession', () => {
     });
   });
 
+  describe('two players on one device', () => {
+    const hotseat = (rotate = false, storage = new MemoryStorage()) => {
+      const session = new GameSession(fakeAi(), storage, fakeAnalysis());
+      session.start();
+      session.newGame({ human: 1, level: 'easy', opponent: 'human', rotate });
+      return { session, storage };
+    };
+
+    it('lets both sides move, with no computer and no evaluation by default', async () => {
+      const { session } = hotseat();
+      expect(session.getSnapshot().showEvaluation).toBe(false);
+      session.clickSquare(sq('c3'));
+      session.clickSquare(sq('c4'));
+      // No computer reply comes; Black moves from the same device.
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      let snapshot = session.getSnapshot();
+      expect(snapshot.moveList).toEqual(['c3-c4']);
+      expect(snapshot.thinking).toBe(false);
+      expect(snapshot.premoveEnabled).toBe(false);
+      expect(snapshot.humanMoves.length).toBeGreaterThan(0);
+      session.clickSquare(sq('c6'));
+      session.clickSquare(sq('c5'));
+      snapshot = session.getSnapshot();
+      expect(snapshot.moveList).toEqual(['c3-c4', 'c6-c5']);
+      expect(snapshot.event).toMatchObject({ kind: 'move', by: 'human', side: -1 });
+      session.stop();
+    });
+
+    it('takes back one move at a time and turns the board when asked', () => {
+      const { session } = hotseat(true);
+      expect(session.getSnapshot().flipped).toBe(false);
+      session.clickSquare(sq('c3'));
+      session.clickSquare(sq('c4'));
+      expect(session.getSnapshot().flipped).toBe(true);
+      session.undo();
+      const snapshot = session.getSnapshot();
+      expect(snapshot.moveList).toEqual([]);
+      expect(snapshot.flipped).toBe(false);
+      session.stop();
+    });
+
+    it('agrees a draw at once, and the side to move resigns', () => {
+      const { session } = hotseat();
+      session.offerDraw();
+      expect(session.getSnapshot().result).toEqual({ winner: null, reason: 'agreement' });
+
+      session.newGame({ human: 1, level: 'easy', opponent: 'human' });
+      session.clickSquare(sq('c3'));
+      session.clickSquare(sq('c4'));
+      session.resign();
+      expect(session.getSnapshot().result).toEqual({ winner: 1, reason: 'resignation' });
+      session.stop();
+    });
+
+    it('is remembered between visits', () => {
+      const { session, storage } = hotseat(true);
+      session.stop();
+      const restored = new GameSession(fakeAi(), storage, fakeAnalysis());
+      expect(restored.getSnapshot().settings).toMatchObject({ opponent: 'human', rotate: true });
+    });
+
+    it('brings the evaluation back for the next game against the computer', () => {
+      const { session } = hotseat();
+      session.newGame({ human: 1, level: 'easy' });
+      expect(session.getSnapshot().showEvaluation).toBe(true);
+      session.stop();
+    });
+  });
+
   it('ends the game on resignation', () => {
     const { session } = started();
     session.resign();

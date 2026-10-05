@@ -4,10 +4,15 @@ import { LEVELS } from '../ai';
 import type { TimeControl } from './clock';
 
 export interface Settings {
+  /** The side the player takes; with two players, the side at the bottom at the start. */
   readonly human: Color;
   readonly level: Level;
   /** The time control; untimed when missing or `null`. */
   readonly clock?: TimeControl | null;
+  /** `human`: two players share the device (no AI). Missing means against the computer. */
+  readonly opponent?: 'computer' | 'human';
+  /** With two players, turn the board to the side to move after every move. */
+  readonly rotate?: boolean;
 }
 
 /** Time left on each side's clock when the game was saved. */
@@ -71,7 +76,14 @@ function parseSettings(value: unknown): Settings | null {
   const known = LEVELS.find((candidate) => candidate === level);
   if (!known) return null;
   const clock = parseTimeControl(value.clock);
-  return clock ? { human, level: known, clock } : { human, level: known };
+  return {
+    human,
+    level: known,
+    ...(clock ? { clock } : {}),
+    ...(value.opponent === 'human'
+      ? { opponent: 'human' as const, rotate: value.rotate === true }
+      : {}),
+  };
 }
 
 function parseClock(value: unknown): SavedClock | null {
