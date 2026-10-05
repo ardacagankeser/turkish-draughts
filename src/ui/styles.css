@@ -1198,3 +1198,34 @@ kbd {
 .setting-hint {
   margin: 0 0 4px;
 }
+
+/* Clocks ------------------------------------------------------------------- */
+.choices.clocks {
+  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+}
+
+.clock {
+  margin-left: auto;
+  min-width: 4.5ch;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  font-family: var(--mono);
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.clock.running {
+  background: var(--text);
+  color: var(--surface);
+}
+
+.clock.low {
+  color: var(--danger);
+}
+
+.clock.running.low {
+  background: var(--danger);
+  color: var(--danger-text);
+}

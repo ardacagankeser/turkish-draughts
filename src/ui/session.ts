@@ -10,7 +10,9 @@ import {
   rankOf,
 } from '../engine';
 import type { AiClient, Level } from '../ai';
-import { AnalysisClient, MATE } from '../ai';
+import { AnalysisClient, LEVEL_OPTIONS, MATE } from '../ai';
+import type { ClockView } from './clock';
+import { Clock, LOW_TIME_MS, aiBudget } from './clock';
 import type { UiPiece } from './pieces';
 import { applyMove, piecesFromBoard } from './pieces';
 import type { Selection } from './selection';
@@ -54,7 +56,9 @@ export type GameEvent =
       /** Set when this move ended the game. */
       readonly result: GameResult | null;
     }
-  | { readonly id: number; readonly kind: 'end'; readonly result: GameResult };
+  | { readonly id: number; readonly kind: 'end'; readonly result: GameResult }
+  /** `side`'s clock has just dropped under ten seconds. */
+  | { readonly id: number; readonly kind: 'lowTime'; readonly side: Color };
 
 /** Outcome of typing a move in notation. */
 export type NotationResult = 'played' | 'illegal' | 'not-your-turn';
@@ -113,6 +117,8 @@ export interface Snapshot {
   /** Pieces each side has taken, up to the position shown. */
   readonly taken: { readonly white: readonly Piece[]; readonly black: readonly Piece[] };
   readonly event: GameEvent | null;
+  /** Both clocks, in a timed game. */
+  readonly clock: ClockView | null;
 }
 
 type Listener = () => void;
@@ -162,6 +168,10 @@ export class GameSession {
   #showEvaluation: boolean;
   #flipped: boolean;
   #resultId = 0;
+  readonly #now: () => number;
+  #clock: Clock | null = null;
+  #flagTimer: ReturnType<typeof setTimeout> | undefined;
+  #lowTimeTimer: ReturnType<typeof setTimeout> | undefined;
   /** Bumped whenever the position changes under a pending AI request. */
   #token = 0;
   #snapshot: Snapshot;
@@ -170,7 +180,9 @@ export class GameSession {
     ai: AiClient,
     storage: Storage = globalThis.localStorage,
     analysis: AnalysisClient = new AnalysisClient(),
+    now: () => number = () => performance.now(),
   ) {
+    this.#now = now;
     this.#ai = ai;
     this.#analysis = analysis;
     this.#storage = storage;
@@ -192,6 +204,8 @@ export class GameSession {
       }
     }
     this.#settings = saved.settings;
+    const control = saved.settings?.clock;
+    if (control) this.#clock = new Clock(control, now, saved.clock ?? undefined);
     this.#drawOffers = saved.drawOffers;
     this.#flipped = saved.flipped;
     this.#showEvaluation = saved.showEvaluation;
@@ -212,6 +226,10 @@ export class GameSession {
 
   /** Starts the AI if it is its turn (after loading a saved game, for instance). */
   readonly start = (): void => {
+    // A saved timed game resumes with the side to move's time running.
+    if (this.#clock && !this.#game.isOver && this.#game.history.length > 0) {
+      this.#clock.run(this.#game.turn);
+    }
     this.#refreshEvaluation();
     this.#emit();
     this.#maybeAiMove();
@@ -224,7 +242,17 @@ export class GameSession {
     this.#analysis.dispose();
     clearTimeout(this.#premoveTimer);
     clearTimeout(this.#noticeTimer);
+    clearTimeout(this.#flagTimer);
+    clearTimeout(this.#lowTimeTimer);
     this.#thinking = false;
+  };
+
+  /** Pauses the clocks while the page is hidden, as players expect against the computer. */
+  readonly setHidden = (hidden: boolean): void => {
+    if (!this.#clock || this.#clock.paused === hidden) return;
+    this.#clock.setPaused(hidden);
+    this.#save();
+    this.#emit();
   };
 
   // --- Actions ----------------------------------------------------------------
@@ -269,6 +297,7 @@ export class GameSession {
     this.#cancelAi();
     this.#game = new Game();
     this.#settings = settings;
+    this.#clock = settings.clock ? new Clock(settings.clock, this.#now) : null;
     this.#drawOffers = 0;
     this.#evaluation = null;
     this.#flipped = settings.human === -1;
@@ -304,6 +333,7 @@ export class GameSession {
       this.#game.undo();
       if (this.#game.turn === human) break;
     }
+    this.#clock?.run(this.#game.history.length > 0 ? this.#game.turn : null);
     this.#reset();
   };
 
@@ -337,6 +367,7 @@ export class GameSession {
         this.#thinking = false;
         if (accepted) {
           this.#game.agreeDraw();
+          this.#clock?.stop();
           this.#resultId++;
           if (this.#game.result)
             this.#event = { id: ++this.#eventId, kind: 'end', result: this.#game.result };
@@ -355,6 +386,7 @@ export class GameSession {
     if (!this.#settings || this.#game.isOver) return;
     this.#cancelAi();
     this.#game.resign(this.#settings.human);
+    this.#clock?.stop();
     this.#resultId++;
     if (this.#game.result)
       this.#event = { id: ++this.#eventId, kind: 'end', result: this.#game.result };
@@ -536,8 +568,15 @@ export class GameSession {
   }
 
   #commit(move: Move): void {
+    // A move made after the flag fell does not count.
+    if (this.#clock?.flagged()) {
+      this.#timeOut();
+      return;
+    }
     const mover = this.#game.turn;
     const played = this.#game.play(move);
+    if (this.#game.isOver) this.#clock?.stop();
+    else this.#clock?.moved(mover);
     const landed = this.#game.board.get(played.to);
     const damaAlti =
       !isKing(landed) && rankOf(played.to) === (mover === 1 ? 6 : 1) && !played.promotes;
@@ -626,8 +665,17 @@ export class GameSession {
     }
     const token = ++this.#token;
     this.#setThinking(true);
+    // With a clock the AI spends its own time; it never thinks longer than its level.
+    const clock = this.#clock;
+    const timeMs = clock
+      ? aiBudget(
+          clock.remaining(this.#game.turn),
+          clock.control,
+          LEVEL_OPTIONS[settings.level].timeMs ?? Infinity,
+        )
+      : undefined;
     Promise.all([
-      this.#ai.chooseMove(INITIAL_FEN, this.#moves(), settings.level),
+      this.#ai.chooseMove(INITIAL_FEN, this.#moves(), settings.level, timeMs),
       sleep(MIN_AI_DELAY_MS),
     ])
       .then(([response]) => {
@@ -642,6 +690,44 @@ export class GameSession {
       .catch((error: unknown) => {
         this.#failed(token, error);
       });
+  }
+
+  /** The side to move has run out of time: it loses, whatever the position (TÜDAF 1g). */
+  #timeOut(): void {
+    const loser = this.#clock?.flagged();
+    if (!this.#clock || !loser || this.#game.isOver) return;
+    this.#cancelAi();
+    this.#selection = null;
+    this.#premove = null;
+    this.#premoveFrom = null;
+    this.#game.timeout(loser);
+    this.#clock.stop();
+    this.#resultId++;
+    if (this.#game.result) {
+      this.#event = { id: ++this.#eventId, kind: 'end', result: this.#game.result };
+    }
+    this.#refreshEvaluation();
+    this.#save();
+    this.#emit();
+  }
+
+  /** Wakes up when the running side's flag falls, and when it gets low on time. */
+  #scheduleClock(): void {
+    clearTimeout(this.#flagTimer);
+    clearTimeout(this.#lowTimeTimer);
+    const clock = this.#clock;
+    const side = clock?.running;
+    if (!clock || !side || clock.paused || this.#game.isOver) return;
+    const left = clock.remaining(side);
+    this.#flagTimer = setTimeout(() => {
+      this.#timeOut();
+    }, left + 1);
+    if (left > LOW_TIME_MS) {
+      this.#lowTimeTimer = setTimeout(() => {
+        this.#event = { id: ++this.#eventId, kind: 'lowTime', side };
+        this.#emit();
+      }, left - LOW_TIME_MS);
+    }
   }
 
   #cancelAi(): void {
@@ -688,12 +774,16 @@ export class GameSession {
         drawOffers: this.#drawOffers,
         flipped: this.#flipped,
         showEvaluation: this.#showEvaluation,
+        clock: this.#clock
+          ? { white: this.#clock.remaining(1), black: this.#clock.remaining(-1) }
+          : null,
       },
       this.#storage,
     );
   }
 
   #emit(): void {
+    this.#scheduleClock();
     this.#snapshot = this.#build();
     for (const listener of this.#listeners) listener();
   }
@@ -756,6 +846,7 @@ export class GameSession {
         this.#selection && humanMoves.length > 0 ? jumpedSoFar(humanMoves, this.#selection) : [],
       taken: this.#taken(),
       event: this.#event,
+      clock: this.#clock?.view() ?? null,
     };
   }
 }

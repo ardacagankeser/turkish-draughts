@@ -34,8 +34,21 @@ export class AiClient {
     this.#create = create;
   }
 
-  async chooseMove(fen: string, moves: readonly string[], level: Level): Promise<MoveResponse> {
-    const response = await this.#send({ id: this.#nextId++, type: 'move', fen, moves, level });
+  /** Asks for a move; `timeMs` caps the level's thinking time (a running clock). */
+  async chooseMove(
+    fen: string,
+    moves: readonly string[],
+    level: Level,
+    timeMs?: number,
+  ): Promise<MoveResponse> {
+    const response = await this.#send({
+      id: this.#nextId++,
+      type: 'move',
+      fen,
+      moves,
+      level,
+      ...(timeMs === undefined ? {} : { timeMs }),
+    });
     if (response.type !== 'move') throw new Error('Unexpected response from the AI');
     return response;
   }

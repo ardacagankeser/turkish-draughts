@@ -269,6 +269,20 @@ describe('App', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
+  it('starts a timed game with a clock for each side', async () => {
+    const { user } = renderApp();
+    await user.click(screen.getByRole('radio', { name: '3+2' }));
+    await user.click(screen.getByRole('button', { name: 'Start game' }));
+    expect(screen.getByRole('timer', { name: 'White clock' })).toHaveTextContent('3:00');
+    expect(screen.getByRole('timer', { name: 'Black clock' })).toHaveTextContent('3:00');
+  });
+
+  it('has no clocks in an untimed game', async () => {
+    const { user } = renderApp();
+    await user.click(screen.getByRole('button', { name: 'Start game' }));
+    expect(screen.queryByRole('timer')).not.toBeInTheDocument();
+  });
+
   it('switches language', async () => {
     const { user } = renderApp();
     await user.click(screen.getByRole('button', { name: 'TR' }));
