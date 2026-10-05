@@ -10,6 +10,7 @@
   --accent: #b5502a;
   --accent-text: #fff;
   --danger: #b3261e;
+  --danger-text: #fff;
   --focus: #1f6feb;
 
   --wood: #e2c08d;
@@ -37,6 +38,10 @@
     --text-muted: #b3a492;
     --border: #3d3228;
     --accent: #e0703f;
+    /* Dark text on the bright accent and danger colours keeps WCAG AA contrast. */
+    --accent-text: #1c1209;
+    --danger: #f2867d;
+    --danger-text: #1c1209;
     --focus: #58a6ff;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 20px rgba(0, 0, 0, 0.35);
   }
@@ -511,7 +516,7 @@ button.primary {
 button.danger {
   background: var(--danger);
   border-color: var(--danger);
-  color: #fff;
+  color: var(--danger-text);
 }
 
 .controls .primary {
@@ -885,4 +890,171 @@ button.danger {
    clicked square. Show it only once the player actually navigates the board by keyboard. */
 .board:not(.keyboard) .square:focus-visible {
   outline: none;
+}
+
+/* Header tools, material, notation input, shortcuts -------------------------- */
+.header-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.icon-button {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.icon-button[aria-pressed='false'] {
+  opacity: 0.7;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.taken {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 2px;
+  max-width: 55%;
+}
+
+.mini {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+.mini.white {
+  background: #f3ece2;
+}
+
+.mini.black {
+  background: #2b2826;
+}
+
+.mini.king {
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.35),
+    0 0 0 2px #c79a3a;
+  margin: 0 2px;
+}
+
+.lead {
+  margin-left: 6px;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.notation {
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.notation label {
+  display: block;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.notation-row {
+  display: flex;
+  gap: 8px;
+}
+
+.notation input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-family: var(--mono);
+}
+
+.notation input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.notation button {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  font-weight: 600;
+}
+
+.notation .help,
+.notation .error {
+  margin: 6px 0 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.notation .error {
+  color: var(--danger);
+}
+
+.shortcuts {
+  margin: 0 0 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.shortcuts div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.shortcuts dt {
+  display: flex;
+  gap: 4px;
+}
+
+.shortcuts dd {
+  margin: 0;
+  color: var(--text-muted);
+  text-align: right;
+}
+
+kbd {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  background: var(--surface-2);
+}
+
+.notice.damaAlti {
+  font-size: 1.4rem;
+  color: #ffd166;
 }

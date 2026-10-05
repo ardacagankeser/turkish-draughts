@@ -1,23 +1,104 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { KeyboardEvent, ReactNode } from 'react';
 import type { Color, GameResult } from '../../engine';
 import type { Level } from '../../ai';
 import { LEVELS } from '../../ai';
 import { levelKey, reasonKey, useI18n } from '../i18n';
 import type { Settings } from '../storage';
 
-function Dialog({ title, children }: { title: string; children: ReactNode }) {
+const FOCUSABLE = 'button:not(:disabled), input:not(:disabled), [href], [tabindex="0"]';
+
+/**
+ * A modal dialog: focuses its first control, keeps Tab inside, closes on Escape when it can
+ * be closed, and gives the focus back to where it was when it closes.
+ */
+function Dialog({
+  title,
+  children,
+  onClose,
+}: {
+  title: string;
+  children: ReactNode;
+  onClose?: (() => void) | null;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    ref.current?.querySelector<HTMLElement>('button, input')?.focus();
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    ref.current?.querySelector<HTMLElement>(FOCUSABLE)?.focus();
+    return () => {
+      if (previous?.isConnected) previous.focus();
+    };
   }, []);
+
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape' && onClose) {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+    if (event.key !== 'Tab' || !ref.current) return;
+    const items = [...ref.current.querySelectorAll<HTMLElement>(FOCUSABLE)];
+    const first = items[0];
+    const last = items.at(-1);
+    if (!first || !last) return;
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
   return (
     <div className="backdrop">
-      <div ref={ref} className="dialog" role="dialog" aria-modal="true" aria-label={title}>
+      <div
+        ref={ref}
+        className="dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onKeyDown={onKeyDown}
+      >
         <h2>{title}</h2>
         {children}
       </div>
     </div>
+  );
+}
+
+/** Keyboard shortcuts, opened with `?`. */
+export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
+  const { t } = useI18n();
+  const rows: [string, string][] = [
+    ['← → Home End', t('shortcutBrowse')],
+    ['f', t('flip')],
+    ['h', t('hint')],
+    ['u', t('undo')],
+    ['n', t('newGame')],
+    ['Esc', t('shortcutCancel')],
+    ['?', t('shortcutHelp')],
+  ];
+  return (
+    <Dialog title={t('shortcuts')} onClose={onClose}>
+      <dl className="shortcuts">
+        {rows.map(([keys, label]) => (
+          <div key={keys}>
+            <dt>
+              {keys.split(' ').map((key) => (
+                <kbd key={key}>{key}</kbd>
+              ))}
+            </dt>
+            <dd>{label}</dd>
+          </div>
+        ))}
+      </dl>
+      <div className="actions">
+        <button type="button" className="primary" onClick={onClose}>
+          {t('close')}
+        </button>
+      </div>
+    </Dialog>
   );
 }
 
@@ -43,7 +124,7 @@ export function NewGameDialog({
   ];
 
   return (
-    <Dialog title={t('newGame')}>
+    <Dialog title={t('newGame')} onClose={onCancel}>
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -117,7 +198,7 @@ export function GameOverDialog({
   const title =
     result.winner === null ? t('draw') : result.winner === human ? t('youWin') : t('youLose');
   return (
-    <Dialog title={title}>
+    <Dialog title={title} onClose={onClose}>
       <p>{t(reasonKey(result))}</p>
       <div className="actions">
         <button type="button" onClick={onClose}>
