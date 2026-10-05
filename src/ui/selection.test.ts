@@ -7,7 +7,7 @@ import {
   jumpedSoFar,
   movableSquares,
   nextSquares,
-  premoveTargets,
+  premoveMoves,
 } from './selection';
 
 const sq = parseSquare;
@@ -71,17 +71,23 @@ describe('click-to-move', () => {
     expect(result.type === 'play' && moveToNotation(result.move)).toBe('h1xh7xf7');
   });
 
-  it('lists premove targets from the movement pattern, ignoring other pieces', () => {
-    // A white man on d4: one or two squares forward and sideways (captures land two away).
-    expect(names(premoveTargets(1, sq('d4')))).toEqual(['b4', 'c4', 'd5', 'd6', 'e4', 'f4']);
-    // A black man moves the other way.
-    expect(names(premoveTargets(-1, sq('d4')))).toContain('d2');
-    // A king: its whole rank and file.
-    const king = premoveTargets(2, sq('a1'));
-    expect(king.size).toBe(14);
-    expect(king.has(sq('a8'))).toBe(true);
-    expect(king.has(sq('h1'))).toBe(true);
-    expect(king.has(sq('b2'))).toBe(false);
+  it('offers only moves that are legal right now as premoves', () => {
+    // Black is to move, but a premove is chosen for White in this very position.
+    const board = new Game('B:Wd4,a1:Bd5,d6,h8').board;
+    const targets = (from: string) =>
+      names(
+        new Set(
+          premoveMoves(board, 1)
+            .filter((m) => m.from === sq(from))
+            .map((m) => m.to),
+        ),
+      );
+    // No two-square steps: a man moves one square, forward or sideways.
+    expect(targets('d4')).toEqual(['c4', 'e4']);
+    expect(targets('a1')).toEqual(['a2', 'b1']);
+    // A capture available now is mandatory for the premove too.
+    const capture = new Game('B:Wd4,a1:Bd5,h8').board;
+    expect(premoveMoves(capture, 1).map((m) => m.to)).toEqual([sq('d6')]);
   });
 
   it('shows the pieces jumped so far while a chain is chosen step by step', () => {

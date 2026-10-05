@@ -138,13 +138,53 @@ describe('App', () => {
     const e5 = screen.getByRole('gridcell', { name: 'e5' });
     fireEvent.pointerDown(e3, { button: 2, pointerId: 2 });
     fireEvent.pointerUp(e5, { button: 2, pointerId: 2 });
-    fireEvent.pointerDown(e5, { button: 2, pointerId: 2, shiftKey: true });
-    fireEvent.pointerUp(e5, { button: 2, pointerId: 2, shiftKey: true });
+    fireEvent.pointerDown(e5, { button: 2, pointerId: 2 });
+    fireEvent.pointerUp(e5, { button: 2, pointerId: 2 });
     expect(container.querySelectorAll('.drawings polyline')).toHaveLength(1);
     expect(container.querySelectorAll('.drawings circle')).toHaveLength(1);
     fireEvent.pointerDown(e5, { button: 0, pointerId: 3 });
     fireEvent.pointerUp(e5, { button: 0, pointerId: 3 });
     expect(container.querySelectorAll('.drawings polyline, .drawings circle')).toHaveLength(0);
+  });
+
+  it('shows a capture chain step by step, then plays it from the start', async () => {
+    // After these moves White must take three pieces: d4xd6xb6xb8.
+    const storage = new MemoryStorage();
+    storage.setItem(
+      'turkish-draughts:v1',
+      JSON.stringify({
+        settings: { human: 1, level: 'easy' },
+        moves: ['a3-a4', 'b6-b5', 'd3-d4', 'd6-d5'],
+      }),
+    );
+    const { user, container } = renderApp(storage);
+    await user.click(screen.getByRole('gridcell', { name: 'd4, white man' }));
+    await user.click(screen.getByRole('gridcell', { name: 'd6' }));
+    // The man now shows, faded, on the landing square; the jumped piece is faded too.
+    expect(screen.getByRole('gridcell', { name: 'd6, white man' })).toBeInTheDocument();
+    expect(screen.getByRole('gridcell', { name: 'd4' })).toBeInTheDocument();
+    expect(container.querySelectorAll('.piece.ghost')).toHaveLength(2);
+    expect(screen.getByRole('status')).toHaveTextContent('Continue the capture');
+
+    // Drag the faded piece on from the landing square to the end of the chain.
+    const d6 = screen.getByRole('gridcell', { name: 'd6, white man' });
+    const b8 = screen.getByRole('gridcell', { name: 'b8' });
+    fireEvent.pointerDown(d6, { button: 0, pointerId: 4, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(d6, { button: 0, pointerId: 4, clientX: -60, clientY: -60 });
+    fireEvent.pointerUp(b8, { button: 0, pointerId: 4, clientX: -60, clientY: -60 });
+    expect(screen.getByText('d4xd5xc6xb7')).toBeInTheDocument();
+    expect(screen.getByRole('gridcell', { name: 'b8, white king' })).toBeInTheDocument();
+  });
+
+  it('shows the focus ring only for keyboard navigation, not for Shift', async () => {
+    const { user, container } = renderApp();
+    await user.click(screen.getByRole('button', { name: 'Start game' }));
+    const c3 = screen.getByRole('gridcell', { name: 'c3, white man' });
+    await user.click(c3);
+    fireEvent.keyDown(c3, { key: 'Shift' });
+    expect(container.querySelector('.board')).not.toHaveClass('keyboard');
+    fireEvent.keyDown(c3, { key: 'ArrowUp' });
+    expect(container.querySelector('.board')).toHaveClass('keyboard');
   });
 
   it('switches language', async () => {
