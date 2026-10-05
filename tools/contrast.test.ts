@@ -10,10 +10,14 @@ const css = readFileSync(resolve(import.meta.dirname, '../src/ui/styles.css'), '
 
 const HEX = '#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3}';
 
-/** Colour tokens of the main `:root` block, as `--name: #hex` or `light-dark(#hex, #hex)`. */
+/** Colour tokens of the `:root` blocks, as `--name: #hex` or `light-dark(#hex, #hex)`. */
 function themes(): { light: Record<string, string>; dark: Record<string, string> } {
-  const start = css.indexOf(':root {');
-  const block = css.slice(start, css.indexOf('}', start));
+  // Every plain `:root {` block holds design tokens.
+  const block = css
+    .split(':root {')
+    .slice(1)
+    .map((part) => part.slice(0, part.indexOf('}')))
+    .join(' ');
   const light: Record<string, string> = {};
   const dark: Record<string, string> = {};
   const pattern = new RegExp(
@@ -59,6 +63,10 @@ const PAIRS: [string, string][] = [
   ['accent', 'surface'],
   ['danger', 'surface'],
   ['danger-text', 'danger'],
+  ['blunder', 'surface'],
+  ['mistake', 'surface'],
+  ['inaccuracy', 'surface'],
+  ['only', 'surface'],
 ];
 
 describe('colour contrast', () => {

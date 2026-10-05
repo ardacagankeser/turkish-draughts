@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseSquare } from '../engine';
-import { MemoryStorage, fakeAi, fakeAnalysis } from '../test/fakes';
+import { MemoryStorage, fakeAi, fakeAnalysis, fakeReview } from '../test/fakes';
 import type { Snapshot } from './session';
 import { GameSession } from './session';
 
@@ -569,6 +569,41 @@ describe('GameSession', () => {
       expect(session.getSnapshot().showEvaluation).toBe(true);
       session.stop();
     });
+  });
+
+  it('reviews a finished game position by position', async () => {
+    const storage = new MemoryStorage();
+    storage.setItem(
+      'turkish-draughts:v1',
+      JSON.stringify({
+        settings: { human: 1, level: 'easy' },
+        moves: ['a3-a4', 'b6-b5', 'd3-d4', 'd6-d5'],
+        ending: { reason: 'resignation', winner: -1 },
+      }),
+    );
+    const session = new GameSession(fakeAi(), storage, fakeAnalysis(), undefined, fakeReview());
+    expect(session.getSnapshot().review).toBeNull();
+    session.startReview();
+    expect(session.getSnapshot().review).toMatchObject({ done: false, progress: 0 });
+    const reviewed = await until(session, (s) => s.review?.done === true);
+    expect(reviewed.review?.scores).toHaveLength(5);
+    expect(reviewed.review?.scores.every((score) => score !== null)).toBe(true);
+    expect(reviewed.review?.moves).toHaveLength(4);
+    expect(reviewed.review?.white.accuracy).not.toBeNull();
+    // White must capture after d6-d5: the engine's capture is drawn as an arrow.
+    session.showPly(4);
+    expect(session.getSnapshot().bestMove).toMatchObject({ from: sq('d4') });
+    // A new game drops the review.
+    session.newGame({ human: 1, level: 'easy' });
+    expect(session.getSnapshot().review).toBeNull();
+    session.stop();
+  });
+
+  it('reviews only finished games', () => {
+    const { session } = started();
+    session.startReview();
+    expect(session.getSnapshot().review).toBeNull();
+    session.stop();
   });
 
   it('ends the game on resignation', () => {

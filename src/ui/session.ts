@@ -7,11 +7,16 @@ import {
   findMove,
   isKing,
   moveToNotation,
+  moveToTudafNotation,
   opponent,
+  parseSquare,
   rankOf,
 } from '../engine';
 import type { AiClient, Level } from '../ai';
-import { AnalysisClient, LEVEL_OPTIONS, MATE } from '../ai';
+import type { ReviewPosition } from '../ai';
+import { AnalysisClient, LEVEL_OPTIONS, MATE, ReviewClient } from '../ai';
+import type { ReviewedMove, SideSummary } from './review';
+import { judgeMoves, summarise } from './review';
 import type { ClockView } from './clock';
 import { Clock, LOW_TIME_MS, aiBudget } from './clock';
 import type { UiPiece } from './pieces';
@@ -124,6 +129,29 @@ export interface Snapshot {
   readonly event: GameEvent | null;
   /** Both clocks, in a timed game. */
   readonly clock: ClockView | null;
+  /** The computer's review of the finished game, once asked for. */
+  readonly review: GameReview | null;
+  /** In a reviewed game, the engine's choice in the position shown. */
+  readonly bestMove: BoardLine | null;
+}
+
+/** A line on the board: a start square and its landing squares. */
+export interface BoardLine {
+  readonly from: Square;
+  readonly path: readonly Square[];
+}
+
+export interface GameReview {
+  readonly done: boolean;
+  /** Share of the positions evaluated so far, from 0 to 1. */
+  readonly progress: number;
+  /** Evaluation (White's point of view) after each number of moves; `null` until reached. */
+  readonly scores: readonly (number | null)[];
+  /** The engine's choice in each position, in TÜDAF notation as in the move list. */
+  readonly bestMoves: readonly (string | null)[];
+  readonly moves: readonly ReviewedMove[];
+  readonly white: SideSummary;
+  readonly black: SideSummary;
 }
 
 type Listener = () => void;
@@ -175,6 +203,15 @@ export class GameSession {
   #flipped: boolean;
   #resultId = 0;
   readonly #now: () => number;
+  readonly #reviewer: ReviewClient;
+  #review: {
+    positions: (ReviewPosition | undefined)[];
+    /** The engine's choice in TÜDAF notation, filled in as positions arrive. */
+    bestMoves: (string | null)[];
+    done: boolean;
+  } | null = null;
+  /** Rebuilt only when the review changes, not on every snapshot. */
+  #reviewSnapshot: GameReview | null = null;
   #clock: Clock | null = null;
   #flagTimer: ReturnType<typeof setTimeout> | undefined;
   #lowTimeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -187,8 +224,10 @@ export class GameSession {
     storage: Storage = globalThis.localStorage,
     analysis: AnalysisClient = new AnalysisClient(),
     now: () => number = () => performance.now(),
+    reviewer: ReviewClient = new ReviewClient(),
   ) {
     this.#now = now;
+    this.#reviewer = reviewer;
     this.#ai = ai;
     this.#analysis = analysis;
     this.#storage = storage;
@@ -246,6 +285,7 @@ export class GameSession {
     this.#token++;
     this.#ai.dispose();
     this.#analysis.dispose();
+    this.#reviewer.dispose();
     clearTimeout(this.#premoveTimer);
     clearTimeout(this.#noticeTimer);
     clearTimeout(this.#flagTimer);
@@ -302,6 +342,7 @@ export class GameSession {
 
   readonly newGame = (settings: Settings): void => {
     this.#cancelAi();
+    this.#stopReview();
     this.#game = new Game();
     this.#clock = settings.clock ? new Clock(settings.clock, this.#now) : null;
     this.#drawOffers = 0;
@@ -427,6 +468,39 @@ export class GameSession {
     this.#refreshEvaluation();
     this.#save();
     this.#emit();
+  };
+
+  /**
+   * Reviews the finished game: the engine evaluates every position, then each move is
+   * judged and each side gets an accuracy. Results arrive position by position.
+   */
+  readonly startReview = (): void => {
+    if (!this.#game.isOver || this.#review) return;
+    const moves = this.#moves();
+    this.#review = {
+      positions: new Array<ReviewPosition | undefined>(moves.length + 1),
+      bestMoves: new Array<string | null>(moves.length + 1).fill(null),
+      done: false,
+    };
+    this.#updateReview();
+    this.#emit();
+    this.#reviewer.review(
+      INITIAL_FEN,
+      moves,
+      (position) => {
+        if (!this.#review) return;
+        this.#review.positions[position.index] = position;
+        this.#review.bestMoves[position.index] = this.#tudaf(moves, position);
+        this.#updateReview();
+        this.#emit();
+      },
+      () => {
+        if (!this.#review) return;
+        this.#review.done = true;
+        this.#updateReview();
+        this.#emit();
+      },
+    );
   };
 
   /** Clears a queued premove and a premove being picked. */
@@ -784,6 +858,54 @@ export class GameSession {
     }
   }
 
+  /** The engine's choice for a reviewed position, written as the move list writes moves. */
+  #tudaf(moves: readonly string[], position: ReviewPosition): string | null {
+    if (!position.best) return null;
+    try {
+      const game = new Game();
+      for (const move of moves.slice(0, position.index)) game.play(move);
+      const legal = game.legalMoves;
+      return moveToTudafNotation(findMove(legal, position.best), legal);
+    } catch {
+      return position.best;
+    }
+  }
+
+  #stopReview(): void {
+    if (!this.#review) return;
+    this.#reviewer.stop();
+    this.#review = null;
+    this.#reviewSnapshot = null;
+  }
+
+  #updateReview(): void {
+    const review = this.#review;
+    if (!review) {
+      this.#reviewSnapshot = null;
+      return;
+    }
+    const { positions } = review;
+    const moves = judgeMoves(positions, this.#moves());
+    const evaluated = positions.filter((position) => position !== undefined).length;
+    this.#reviewSnapshot = {
+      done: review.done,
+      progress: review.done ? 1 : evaluated / positions.length,
+      scores: Array.from(positions, (position) => position?.score ?? null),
+      bestMoves: [...review.bestMoves],
+      moves,
+      white: summarise(moves, 1),
+      black: summarise(moves, -1),
+    };
+  }
+
+  /** The engine's choice in the position shown, once the review has reached it. */
+  #bestMove(): BoardLine | null {
+    const best = this.#review?.positions[this.#displayedPly()]?.best;
+    if (!best) return null;
+    const [from, ...path] = best.split(/[x-]/).map(parseSquare);
+    return from === undefined ? null : { from, path };
+  }
+
   #cancelAi(): void {
     this.#token++;
     if (this.#thinking) this.#ai.cancel();
@@ -906,6 +1028,8 @@ export class GameSession {
       taken: this.#taken(),
       event: this.#event,
       clock: this.#clock?.view() ?? null,
+      review: this.#reviewSnapshot,
+      bestMove: this.#bestMove(),
     };
   }
 }

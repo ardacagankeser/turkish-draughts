@@ -3,7 +3,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { MemoryStorage, fakeAi, fakeAnalysis } from '../test/fakes';
+import { MemoryStorage, fakeAi, fakeAnalysis, fakeReview } from '../test/fakes';
 import { HOP_MS, NORMAL_TIMING } from './animation';
 import { App } from './App';
 import { MESSAGES, detectLanguage, translator } from './i18n';
@@ -334,6 +334,40 @@ describe('App', () => {
     expect(screen.getByRole('dialog', { name: 'Draw' })).toBeInTheDocument();
   });
 
+  it('reviews a finished game from the game-over dialog', async () => {
+    const storage = new MemoryStorage();
+    storage.setItem('turkish-draughts:language', 'en');
+    const { container } = render(
+      <App
+        createAi={fakeAi}
+        createAnalysis={fakeAnalysis}
+        createReview={fakeReview}
+        storage={storage}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Start game' }));
+    await user.click(screen.getByRole('gridcell', { name: 'c3, white man' }));
+    await user.click(screen.getByRole('gridcell', { name: 'c4' }));
+    await waitFor(() => {
+      expect(container.querySelectorAll('.move')).toHaveLength(2);
+    });
+    await user.click(screen.getByRole('button', { name: 'Resign' }));
+    await user.click(screen.getByRole('button', { name: 'Are you sure?' }));
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Analyse the game' }),
+    );
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    // The panel's own button has made way for the review.
+    expect(screen.queryByRole('button', { name: 'Analyse the game' })).not.toBeInTheDocument();
+    const review = screen.getByRole('region', { name: 'Game review' });
+    expect(within(review).getByRole('img', { name: /Evaluation graph/ })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(within(review).queryByRole('progressbar')).not.toBeInTheDocument();
+    });
+    expect(within(review).getByRole('row', { name: /You/ })).toHaveTextContent('%');
+  });
+
   it('switches language', async () => {
     const { user } = renderApp();
     await user.click(screen.getByRole('button', { name: 'TR' }));
@@ -352,7 +386,9 @@ describe('App', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     // The finished game stays finished: only a new game (or flipping the board) is possible.
     expect(screen.getByRole('status')).toHaveTextContent('Game over: You lose. By resignation.');
-    for (const name of ['Take back', 'Hint', /Offer draw/, 'Resign', 'Play']) {
+    // A finished game can be reviewed instead of asking for a hint.
+    expect(screen.getByRole('button', { name: 'Analyse the game' })).toBeEnabled();
+    for (const name of ['Take back', /Offer draw/, 'Resign', 'Play']) {
       expect(screen.getByRole('button', { name })).toBeDisabled();
     }
     expect(screen.getByRole('textbox', { name: 'Type a move' })).toBeDisabled();

@@ -1238,3 +1238,132 @@ kbd {
 .dialog form > .setting.check {
   margin-bottom: 14px;
 }
+
+/* Game review --------------------------------------------------------------- */
+:root {
+  --blunder: light-dark(#b3261e, #f2867d);
+  --mistake: light-dark(#b45309, #f5a524);
+  --inaccuracy: light-dark(#8a6d00, #e6c34a);
+  --only: light-dark(#1f7a35, #6fcf86);
+}
+
+.review {
+  padding: 12px 14px;
+}
+
+.review h2 {
+  margin: 0 0 8px;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.review-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.review-progress progress {
+  flex: 1;
+  accent-color: var(--accent);
+}
+
+.eval-graph {
+  display: block;
+  width: 100%;
+  height: 96px;
+  border-radius: 6px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.graph-black {
+  fill: #2b2826;
+}
+
+.graph-white {
+  fill: #f1ece4;
+}
+
+.graph-middle {
+  stroke: #8a8178;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.graph-current {
+  stroke: var(--accent);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.graph-mark {
+  stroke: #ffffff;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.graph-mark.blunder {
+  fill: var(--blunder);
+}
+
+.graph-mark.mistake {
+  fill: var(--mistake);
+}
+
+.graph-mark.inaccuracy {
+  fill: var(--inaccuracy);
+}
+
+.review-summary {
+  width: 100%;
+  margin-top: 8px;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.review-summary th,
+.review-summary td {
+  padding: 3px 4px;
+  text-align: center;
+}
+
+.review-summary th[scope='row'] {
+  text-align: left;
+  font-weight: 600;
+}
+
+.review-summary thead th {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.judgement.blunder,
+.move.blunder .symbol {
+  color: var(--blunder);
+}
+
+.judgement.mistake,
+.move.mistake .symbol {
+  color: var(--mistake);
+}
+
+.judgement.inaccuracy,
+.move.inaccuracy .symbol {
+  color: var(--inaccuracy);
+}
+
+.move.only .symbol {
+  color: var(--only);
+}
+
+.move .symbol {
+  margin-left: 2px;
+  font-weight: 700;
+}
