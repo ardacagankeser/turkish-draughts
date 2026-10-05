@@ -1,9 +1,9 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
-import type { Color, Move, Piece, Square } from '../../engine';
-import { colorOf, squareName } from '../../engine';
-import type { Brush, Shape } from '../drawing';
-import { brushFor, toggleShape } from '../drawing';
+import type { Move, Piece, Square } from '../../engine';
+import { squareName } from '../../engine';
+import type { Shape } from '../drawing';
+import { toggleShape } from '../drawing';
 import type { MessageKey } from '../i18n';
 import { useI18n } from '../i18n';
 import type { UiPiece } from '../pieces';
@@ -15,6 +15,10 @@ import type { Premove } from '../session';
 export const STEP_MS = 170;
 /** Pointer travel (px) before a press on a piece becomes a drag rather than a click. */
 const DRAG_THRESHOLD = 4;
+const DRAWING_COLOUR = '#15781b';
+const HINT_COLOUR = '#1f6feb';
+/** Modifier keys alone do not mean the player is navigating with the keyboard. */
+const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'AltGraph', 'CapsLock']);
 
 interface BoardProps {
   readonly pieces: readonly UiPiece[];
@@ -25,12 +29,11 @@ interface BoardProps {
   readonly selection: Selection | null;
   readonly hint: Move | null;
   readonly flipped: boolean;
-  /** The human's colour; their pieces can be dragged when premoves are allowed. */
-  readonly human: Color;
-  readonly premoveEnabled: boolean;
   readonly premove: Premove | null;
   readonly premoveFrom: Square | null;
   readonly premoveTargets: readonly Square[];
+  /** Pieces that can be picked up for a premove. */
+  readonly premovable: readonly Square[];
   /** Pieces jumped so far in a capture chain being chosen. */
   readonly ghosts: readonly Square[];
   readonly onSquare: (square: Square) => void;
@@ -55,14 +58,6 @@ const PIECE_LABEL: Record<Exclude<Piece, 0>, MessageKey> = {
   [-2]: 'blackKing',
 };
 
-const BRUSH_COLOURS: Record<Brush | 'hint', string> = {
-  green: '#15781b',
-  red: '#a3251f',
-  blue: '#1f5fbf',
-  yellow: '#d98a00',
-  hint: '#1f6feb',
-};
-
 const transform = (square: Square, flipped: boolean) => {
   const { x, y } = toDisplay(square, flipped);
   return `translate(${x * 100}%, ${y * 100}%)`;
@@ -82,16 +77,18 @@ interface Press {
 
 export function Board(props: BoardProps) {
   const { pieces, captured, lastMove, moveNumber, legalMoves, selection, hint, flipped } = props;
-  const { premove, premoveFrom, premoveTargets, ghosts } = props;
+  const { premove, premoveFrom, premoveTargets, premovable, ghosts } = props;
   const { t } = useI18n();
   const pieceElements = useRef(new Map<number, HTMLDivElement>());
   const squareElements = useRef(new Map<Square, HTMLButtonElement>());
   const squaresElement = useRef<HTMLDivElement>(null);
   const press = useRef<Press | null>(null);
   const drawingFrom = useRef<Square | null>(null);
-  /** The move number reached by a drop; that move needs no animation. */
+  /** The move number reached by a drop, and the chain step reached by a drop. */
   const droppedAt = useRef(-1);
+  const droppedStep = useRef<Square | null>(null);
   const [focus, setFocus] = useState<Square>(() => fromDisplay(0, 7, flipped));
+  const [keyboard, setKeyboard] = useState(false);
   const [drag, setDrag] = useState<{ id: number; x: number; y: number } | null>(null);
   // Drawings belong to a position: a new move hides them.
   const [drawings, setDrawings] = useState<{ moveNumber: number; shapes: Shape[] }>({
@@ -100,11 +97,16 @@ export function Board(props: BoardProps) {
   });
   const shapes = drawings.moveNumber === moveNumber ? drawings.shapes : [];
 
-  const occupant = useMemo(() => {
-    const map = new Map<Square, UiPiece>();
-    for (const piece of pieces) map.set(piece.square, piece);
-    return map;
-  }, [pieces]);
+  // While a capture chain is chosen step by step, the moving piece is shown (faded) on the
+  // last landing square chosen, not on its starting square.
+  const moving = selection ? pieces.find((piece) => piece.square === selection.from) : undefined;
+  const pending = selection && selection.path.length > 0 ? selection.path.at(-1) : undefined;
+  const shownSquare = (piece: UiPiece) =>
+    piece === moving && pending !== undefined ? pending : piece.square;
+
+  // Pieces by the square they are shown on (cheap: at most 32 pieces).
+  const occupant = new Map<Square, UiPiece>();
+  for (const piece of pieces) occupant.set(shownSquare(piece), piece);
 
   const movable = useMemo(() => movableSquares(legalMoves), [legalMoves]);
   const mustCapture = (legalMoves[0]?.captures.length ?? 0) > 0;
@@ -117,23 +119,23 @@ export function Board(props: BoardProps) {
     [legalMoves, selection],
   );
   const premoveTargetSet = useMemo(() => new Set(premoveTargets), [premoveTargets]);
+  const premovableSet = useMemo(() => new Set(premovable), [premovable]);
   const ghostSet = useMemo(() => new Set(ghosts), [ghosts]);
 
-  const draggable = (square: Square): boolean => {
-    if (movable.has(square)) return true;
-    const piece = occupant.get(square);
-    return props.premoveEnabled && piece !== undefined && colorOf(piece.piece) === props.human;
-  };
+  const draggable = (square: Square): boolean =>
+    movable.has(square) || premovableSet.has(square) || square === pending;
 
   // Animate a newly played move along its path; the piece is already on its final square.
-  // Loading a saved game, taking back or starting over changes the position without a move,
-  // and a dropped piece is already where it belongs.
+  // Loading a saved game, taking back or starting over changes the position without a move.
+  // A dropped quiet move is already where it belongs; a capture always hops from its
+  // starting square through every landing square, however it was played.
   const previousMoveNumber = useRef(moveNumber);
   useLayoutEffect(() => {
     const previous = previousMoveNumber.current;
     previousMoveNumber.current = moveNumber;
-    if (!lastMove || moveNumber !== previous + 1 || droppedAt.current === moveNumber) return;
-    const mover = [...occupant.values()].find((piece) => piece.square === lastMove.to);
+    if (!lastMove || moveNumber !== previous + 1) return;
+    if (droppedAt.current === moveNumber && lastMove.captures.length === 0) return;
+    const mover = pieces.find((piece) => piece.square === lastMove.to);
     const element = mover ? pieceElements.current.get(mover.id) : undefined;
     if (!element || typeof element.animate !== 'function') return;
     const frames = [lastMove.from, ...lastMove.path].map((square) => ({
@@ -143,6 +145,29 @@ export function Board(props: BoardProps) {
     // Only when a new move is played; flipping the board should not replay it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moveNumber]);
+
+  // A step of a capture chain chosen by clicking hops to the new landing square; a step
+  // chosen by dropping the piece there needs no animation.
+  const previousSelection = useRef(selection);
+  useLayoutEffect(() => {
+    const before = previousSelection.current;
+    previousSelection.current = selection;
+    if (!selection || !before || before.from !== selection.from || !moving) return;
+    if (selection.path.length !== before.path.length + 1 || pending === undefined) return;
+    if (droppedStep.current === pending) {
+      droppedStep.current = null;
+      return;
+    }
+    const element = pieceElements.current.get(moving.id);
+    if (!element || typeof element.animate !== 'function') return;
+    const start = before.path.at(-1) ?? before.from;
+    element.animate(
+      [{ transform: transform(start, flipped) }, { transform: transform(pending, flipped) }],
+      { duration: STEP_MS, easing: 'ease-in-out' },
+    );
+    // Only when the chain advances.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selection]);
 
   /** The square under a pointer, or `null` off the board. */
   const squareAt = (event: { clientX: number; clientY: number; target: EventTarget | null }) => {
@@ -158,6 +183,7 @@ export function Board(props: BoardProps) {
   };
 
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    setKeyboard(false);
     const square = squareAt(event);
     if (square === null) return;
     if (event.button === 2) {
@@ -170,7 +196,9 @@ export function Board(props: BoardProps) {
     if (shapes.length > 0) setDrawings({ moveNumber, shapes: [] });
     const canDrag = draggable(square);
     const wasSelected =
-      (selection?.from === square && selection.path.length === 0) || premoveFrom === square;
+      square === pending ||
+      (selection?.from === square && selection.path.length === 0) ||
+      premoveFrom === square;
     // Pick the piece up at once, so its destinations show while dragging.
     if (canDrag && !wasSelected) props.onSquare(square);
     press.current = {
@@ -210,10 +238,7 @@ export function Board(props: BoardProps) {
       const from = drawingFrom.current;
       drawingFrom.current = null;
       if (from === null || target === null) return;
-      setDrawings({
-        moveNumber,
-        shapes: toggleShape(shapes, { from, to: target, brush: brushFor(event) }),
-      });
+      setDrawings({ moveNumber, shapes: toggleShape(shapes, { from, to: target }) });
       return;
     }
     const current = press.current;
@@ -223,6 +248,7 @@ export function Board(props: BoardProps) {
       setDrag(null);
       if (target !== null && target !== current.square) {
         droppedAt.current = moveNumber + 1;
+        droppedStep.current = target;
         props.onSquare(target);
       }
       return;
@@ -242,6 +268,7 @@ export function Board(props: BoardProps) {
   };
 
   const moveFocus = (event: KeyboardEvent, square: Square) => {
+    if (!MODIFIER_KEYS.has(event.key)) setKeyboard(true);
     if (event.key === 'Escape') {
       props.onCancelPremove();
       return;
@@ -305,6 +332,10 @@ export function Board(props: BoardProps) {
           onKeyDown={(event) => {
             moveFocus(event, square);
           }}
+          onKeyUp={(event) => {
+            // Tabbing onto the board: the key goes up on the square that took the focus.
+            if (event.key === 'Tab') setKeyboard(true);
+          }}
         ></button>,
       );
     }
@@ -327,24 +358,22 @@ export function Board(props: BoardProps) {
     const end = { x: last.x - (dx / length) * 0.3, y: last.y - (dy / length) * 0.3 };
     const line = [...coords.slice(0, -1), end].map((p) => `${p.x},${p.y}`).join(' ');
     return (
-      <g key={key} opacity={opacity}>
-        <polyline
-          points={line}
-          fill="none"
-          stroke={colour}
-          strokeWidth={0.16}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          markerEnd={`url(#head-${colour.slice(1)})`}
-        />
-      </g>
+      <polyline
+        key={key}
+        points={line}
+        fill="none"
+        stroke={colour}
+        strokeWidth={0.16}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity={opacity}
+        markerEnd={`url(#head-${colour.slice(1)})`}
+      />
     );
   };
 
-  const colours = Object.values(BRUSH_COLOURS);
-
   return (
-    <div className="board" role="grid" aria-label={t('board')}>
+    <div className={`board${keyboard ? ' keyboard' : ''}`} role="grid" aria-label={t('board')}>
       <div
         ref={squaresElement}
         className="squares"
@@ -373,6 +402,8 @@ export function Board(props: BoardProps) {
         ))}
         {pieces.map((piece) => {
           const dragged = drag !== null && drag.id === piece.id ? drag : null;
+          const shown = shownSquare(piece);
+          const faded = ghostSet.has(piece.square) || (piece === moving && pending !== undefined);
           return (
             <div
               key={piece.id}
@@ -381,12 +412,14 @@ export function Board(props: BoardProps) {
                 else pieceElements.current.delete(piece.id);
               }}
               className={`piece ${pieceClass(piece.piece)}${dragged ? ' dragging' : ''}${
-                ghostSet.has(piece.square) ? ' ghost' : ''
+                faded && !dragged ? ' ghost' : ''
               }`}
               style={{
+                // The scale goes inside the transform, after the translation, so a dragged
+                // piece stays centred under the pointer.
                 transform: dragged
-                  ? `translate(${dragged.x * 100}%, ${dragged.y * 100}%)`
-                  : transform(piece.square, flipped),
+                  ? `translate(${dragged.x * 100}%, ${dragged.y * 100}%) scale(1.12)`
+                  : transform(shown, flipped),
               }}
             />
           );
@@ -394,7 +427,7 @@ export function Board(props: BoardProps) {
       </div>
       <svg className="drawings" viewBox="0 0 8 8" aria-hidden="true">
         <defs>
-          {colours.map((colour) => (
+          {[DRAWING_COLOUR, HINT_COLOUR].map((colour) => (
             <marker
               key={colour}
               id={`head-${colour.slice(1)}`}
@@ -408,11 +441,10 @@ export function Board(props: BoardProps) {
             </marker>
           ))}
         </defs>
-        {hint && arrow([hint.from, ...hint.path], BRUSH_COLOURS.hint, 'hint', 0.85)}
+        {hint && arrow([hint.from, ...hint.path], HINT_COLOUR, 'hint', 0.85)}
         {shapes.map((shape) => {
-          const colour = BRUSH_COLOURS[shape.brush];
           const key = `${shape.from}-${shape.to}`;
-          if (shape.from !== shape.to) return arrow([shape.from, shape.to], colour, key);
+          if (shape.from !== shape.to) return arrow([shape.from, shape.to], DRAWING_COLOUR, key);
           const { x, y } = centre(shape.from);
           return (
             <circle
@@ -421,7 +453,7 @@ export function Board(props: BoardProps) {
               cy={y}
               r={0.44}
               fill="none"
-              stroke={colour}
+              stroke={DRAWING_COLOUR}
               strokeWidth={0.08}
               opacity={0.8}
             />

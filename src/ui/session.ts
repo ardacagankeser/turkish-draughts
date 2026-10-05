@@ -1,19 +1,11 @@
 import type { Color, GameResult, Move, Square } from '../engine';
-import {
-  Game,
-  INITIAL_FEN,
-  MAX_DRAW_OFFERS,
-  colorOf,
-  findMove,
-  moveToNotation,
-  opponent,
-} from '../engine';
+import { Game, INITIAL_FEN, MAX_DRAW_OFFERS, findMove, moveToNotation, opponent } from '../engine';
 import type { AiClient, Level } from '../ai';
 import { AnalysisClient, MATE } from '../ai';
 import type { UiPiece } from './pieces';
 import { applyMove, piecesFromBoard } from './pieces';
 import type { Selection } from './selection';
-import { click, jumpedSoFar, premoveTargets } from './selection';
+import { click, jumpedSoFar, premoveMoves } from './selection';
 import type { Settings } from './storage';
 import { load, save } from './storage';
 
@@ -77,6 +69,8 @@ export interface Snapshot {
   /** The piece picked for a premove, and where it could go. */
   readonly premoveFrom: Square | null;
   readonly premoveTargets: readonly Square[];
+  /** Pieces that can be picked for a premove (they have a legal move right now). */
+  readonly premovable: readonly Square[];
   /** Pieces jumped by the part of a capture chain chosen so far (shown as ghosts). */
   readonly ghosts: readonly Square[];
 }
@@ -379,15 +373,19 @@ export class GameSession {
     );
   }
 
+  /** Legal moves for the human in the current position, as candidates for a premove. */
+  #premoveMoves(): Move[] {
+    return premoveMoves(this.#game.board, this.#settings?.human ?? 1);
+  }
+
   #premoveClick(square: Square): void {
-    const human = this.#settings?.human ?? 1;
-    const board = this.#game.board;
-    const own = colorOf(board.get(square)) === human;
+    const moves = this.#premoveMoves();
     const from = this.#premoveFrom;
-    if (from !== null && square !== from && premoveTargets(board.get(from), from).has(square)) {
+    const movable = moves.some((move) => move.from === square);
+    if (from !== null && moves.some((move) => move.from === from && move.to === square)) {
       this.#premove = { from, to: square };
       this.#premoveFrom = null;
-    } else if (own && square !== from) {
+    } else if (movable && square !== from) {
       this.#premoveFrom = square;
       this.#premove = null;
     } else {
@@ -622,7 +620,12 @@ export class GameSession {
       premoveTargets:
         this.#premoveFrom === null
           ? []
-          : [...premoveTargets(game.board.get(this.#premoveFrom), this.#premoveFrom)],
+          : this.#premoveMoves()
+              .filter((move) => move.from === this.#premoveFrom)
+              .map((move) => move.to),
+      premovable: this.#canPremove()
+        ? [...new Set(this.#premoveMoves().map((move) => move.from))]
+        : [],
       ghosts:
         this.#selection && humanMoves.length > 0 ? jumpedSoFar(humanMoves, this.#selection) : [],
     };
