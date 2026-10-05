@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseSquare } from '../engine';
 import { MemoryStorage, fakeAi, fakeAnalysis } from '../test/fakes';
 import type { Snapshot } from './session';
@@ -428,6 +428,78 @@ describe('GameSession', () => {
     session.setConfirmMoves(false);
     expect(session.getSnapshot().selection).toBeNull();
     session.stop();
+  });
+
+  describe('clock', () => {
+    const minute = { initialMs: 60_000, incrementMs: 5000 };
+    const timed = (human: 1 | -1, storage = new MemoryStorage()) => {
+      const session = new GameSession(fakeAi(), storage, fakeAnalysis(), () => Date.now());
+      session.start();
+      session.newGame({ human, level: 'easy', clock: minute });
+      return { session, storage };
+    };
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('loses on time, whatever the position, with a warning at ten seconds', async () => {
+      const { session } = timed(-1);
+      // The computer's first move is free; then the player's time runs.
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(session.getSnapshot().moveList).toHaveLength(1);
+      expect(session.getSnapshot().clock?.running).toBe(-1);
+      await vi.advanceTimersByTimeAsync(50_500);
+      expect(session.getSnapshot().event).toMatchObject({ kind: 'lowTime', side: -1 });
+      await vi.advanceTimersByTimeAsync(10_000);
+      const snapshot = session.getSnapshot();
+      expect(snapshot.result).toEqual({ winner: 1, reason: 'timeout' });
+      expect(snapshot.event).toMatchObject({ kind: 'end' });
+      expect(snapshot.clock?.running).toBeNull();
+      session.stop();
+    });
+
+    it('adds the increment, pauses while hidden, and is saved with the game', async () => {
+      const { session, storage } = timed(1);
+      session.clickSquare(sq('c3'));
+      session.clickSquare(sq('c4'));
+      await vi.advanceTimersByTimeAsync(1000);
+      let clock = session.getSnapshot().clock;
+      expect(clock?.running).toBe(1);
+      // Black spent its thinking time and gained the increment.
+      expect(clock?.black).toBeGreaterThan(60_000);
+
+      await vi.advanceTimersByTimeAsync(2000);
+      session.setHidden(true);
+      await vi.advanceTimersByTimeAsync(30_000);
+      clock = session.getSnapshot().clock;
+      expect(clock?.paused).toBe(true);
+      expect(clock?.white).toBeLessThanOrEqual(58_500);
+      expect(clock?.white).toBeGreaterThan(57_000);
+      session.stop();
+
+      const restored = new GameSession(fakeAi(), storage, fakeAnalysis(), () => Date.now());
+      restored.start();
+      const view = restored.getSnapshot().clock;
+      expect(view?.white).toBe(clock?.white);
+      expect(view?.running).toBe(1);
+      restored.stop();
+    });
+
+    it('gives the computer less time when its clock runs low', () => {
+      const ai = fakeAi();
+      const chooseMove = vi.spyOn(ai, 'chooseMove');
+      const session = new GameSession(ai, new MemoryStorage(), fakeAnalysis(), () => Date.now());
+      session.start();
+      session.newGame({ human: 1, level: 'expert', clock: { initialMs: 20_000, incrementMs: 0 } });
+      session.clickSquare(sq('c3'));
+      session.clickSquare(sq('c4'));
+      expect(chooseMove).toHaveBeenLastCalledWith(expect.any(String), ['c3-c4'], 'expert', 800);
+      session.stop();
+    });
   });
 
   it('ends the game on resignation', () => {

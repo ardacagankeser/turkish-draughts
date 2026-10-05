@@ -36,6 +36,10 @@ export function tonesFor(event: GameEvent, human: Color, timing: Timing = NORMAL
   });
   if (event.kind === 'start') return [tone(0, 523), tone(0.11, 784)];
   if (event.kind === 'end') return endTones(event.result.winner, human, tone);
+  // Two short beeps when the player's own clock gets low.
+  if (event.kind === 'lowTime') {
+    return event.side === human ? [tone(0, 1046, 0.07, 0.7), tone(0.16, 1046, 0.07, 0.7)] : [];
+  }
 
   const tones: Tone[] = [tone(0, 330, 0.06)];
   // One tick per captured piece as it flies off. The computer's captures play out beat by

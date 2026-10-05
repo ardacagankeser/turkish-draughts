@@ -4,6 +4,7 @@ import { formatEvaluation } from '../evaluation';
 import { revealWithin } from '../scroll';
 import type { GameSession, Snapshot } from '../session';
 import { levelKey, reasonKey, useI18n } from '../i18n';
+import { ClockFace } from './ClockFace';
 
 interface PanelProps {
   readonly game: Snapshot;
@@ -91,6 +92,7 @@ export function Panel({ game, session, onNewGame }: PanelProps) {
             </span>
           )}
         </span>
+        {game.clock && <ClockFace view={game.clock} color={color} />}
       </div>
     );
   };

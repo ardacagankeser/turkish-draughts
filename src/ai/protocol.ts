@@ -13,6 +13,8 @@ export type AiRequest =
       readonly fen: string;
       readonly moves: readonly string[];
       readonly level: Level;
+      /** A tighter time limit than the level's, when a clock is running. */
+      readonly timeMs?: number;
     }
   | {
       readonly id: number;
@@ -58,7 +60,12 @@ export function handleRequest(searcher: Searcher, request: AiRequest): AiRespons
         return { id, type: 'new-game' };
       case 'move': {
         const game = replay(request.fen, request.moves);
-        const result = searcher.search(game, LEVEL_OPTIONS[request.level]);
+        const level = LEVEL_OPTIONS[request.level];
+        const options =
+          request.timeMs === undefined
+            ? level
+            : { ...level, timeMs: Math.min(level.timeMs ?? Infinity, request.timeMs) };
+        const result = searcher.search(game, options);
         return {
           id,
           type: 'move',

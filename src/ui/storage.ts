@@ -1,10 +1,19 @@
 import type { Color } from '../engine';
 import type { Level } from '../ai';
 import { LEVELS } from '../ai';
+import type { TimeControl } from './clock';
 
 export interface Settings {
   readonly human: Color;
   readonly level: Level;
+  /** The time control; untimed when missing or `null`. */
+  readonly clock?: TimeControl | null;
+}
+
+/** Time left on each side's clock when the game was saved. */
+export interface SavedClock {
+  readonly white: number;
+  readonly black: number;
 }
 
 /**
@@ -25,6 +34,7 @@ export interface SavedState {
   readonly drawOffers: number;
   readonly flipped: boolean;
   readonly showEvaluation: boolean;
+  readonly clock: SavedClock | null;
 }
 
 const KEY = 'turkish-draughts:v1';
@@ -37,17 +47,37 @@ export const EMPTY_STATE: SavedState = {
   drawOffers: 0,
   flipped: false,
   showEvaluation: true,
+  clock: null,
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
+
+const isTime = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0;
+
+function parseTimeControl(value: unknown): TimeControl | null {
+  if (!isRecord(value)) return null;
+  const { initialMs, incrementMs } = value;
+  return isTime(initialMs) && initialMs > 0 && isTime(incrementMs)
+    ? { initialMs, incrementMs }
+    : null;
+}
 
 function parseSettings(value: unknown): Settings | null {
   if (!isRecord(value)) return null;
   const { human, level } = value;
   if (human !== 1 && human !== -1) return null;
   const known = LEVELS.find((candidate) => candidate === level);
-  return known ? { human, level: known } : null;
+  if (!known) return null;
+  const clock = parseTimeControl(value.clock);
+  return clock ? { human, level: known, clock } : { human, level: known };
+}
+
+function parseClock(value: unknown): SavedClock | null {
+  if (!isRecord(value)) return null;
+  const { white, black } = value;
+  return isTime(white) && isTime(black) ? { white, black } : null;
 }
 
 function parseEnding(value: unknown): Ending | null {
@@ -79,6 +109,7 @@ export function load(storage: Storage = globalThis.localStorage): SavedState {
       drawOffers: typeof data.drawOffers === 'number' ? data.drawOffers : 0,
       flipped: data.flipped === true,
       showEvaluation: data.showEvaluation !== false,
+      clock: parseClock(data.clock),
     };
   } catch {
     return EMPTY_STATE;

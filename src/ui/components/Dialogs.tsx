@@ -8,6 +8,8 @@ import { LANGUAGES, levelKey, reasonKey, useI18n } from '../i18n';
 import type { Preferences } from '../preferences';
 import { ANIMATION_SPEEDS, BOARDS, PIECE_STYLES, THEMES } from '../preferences';
 import type { Settings } from '../storage';
+import type { TimeControl } from '../clock';
+import { TIME_CONTROLS } from '../clock';
 
 const FOCUSABLE =
   'button:not(:disabled), input:not(:disabled), select:not(:disabled), [href], [tabindex="0"]';
@@ -260,6 +262,17 @@ export function NewGameDialog({
   const { t } = useI18n();
   const [side, setSide] = useState<SideChoice>(initial?.human ?? 1);
   const [level, setLevel] = useState<Level>(initial?.level ?? 'medium');
+  const [clock, setClock] = useState<TimeControl | null>(initial?.clock ?? null);
+  const clocks: [TimeControl | null, string][] = [
+    [null, t('untimed')],
+    ...TIME_CONTROLS.map(({ id, control }): [TimeControl, string] => [
+      control,
+      id === 'tudaf' ? t('clock.tudaf') : id,
+    ]),
+  ];
+  const sameClock = (a: TimeControl | null, b: TimeControl | null) =>
+    a === b ||
+    (a !== null && b !== null && a.initialMs === b.initialMs && a.incrementMs === b.incrementMs);
 
   const sides: [SideChoice, string][] = [
     [1, t('white')],
@@ -273,7 +286,7 @@ export function NewGameDialog({
         onSubmit={(event) => {
           event.preventDefault();
           const human: Color = side === 'random' ? (Math.random() < 0.5 ? 1 : -1) : side;
-          onStart({ human, level });
+          onStart({ human, level, clock });
         }}
       >
         <fieldset>
@@ -308,6 +321,24 @@ export function NewGameDialog({
                   }}
                 />
                 <span>{t(levelKey(value))}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>{t('timeControl')}</legend>
+          <div className="choices clocks">
+            {clocks.map(([value, label]) => (
+              <label key={label} className="choice">
+                <input
+                  type="radio"
+                  name="clock"
+                  checked={sameClock(clock, value)}
+                  onChange={() => {
+                    setClock(value);
+                  }}
+                />
+                <span>{label}</span>
               </label>
             ))}
           </div>

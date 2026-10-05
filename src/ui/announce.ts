@@ -9,6 +9,7 @@ export function describeEvent(event: GameEvent, human: Color, t: Translate): str
     return t('announceStart', { side: t(human === 1 ? 'white' : 'black') });
   }
   if (event.kind === 'end') return describeResult(event.result.winner, human, t, event);
+  if (event.kind === 'lowTime') return event.side === human ? t('announceLowTime') : '';
 
   const parts = [
     t(event.by === 'computer' ? 'announceComputerMove' : 'announceYourMove', {
@@ -29,7 +30,7 @@ function describeResult(
   t: Translate,
   event: GameEvent,
 ): string {
-  const result = event.kind === 'start' ? null : event.result;
+  const result = event.kind === 'end' || event.kind === 'move' ? event.result : null;
   const outcome = winner === null ? t('draw') : winner === human ? t('youWin') : t('youLose');
   const sentence = /[.!?]$/.test(outcome) ? outcome : `${outcome}.`;
   return result ? `${sentence} ${t(reasonKey(result))}` : sentence;

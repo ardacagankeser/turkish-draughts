@@ -155,6 +155,17 @@ export function App({
     };
   }, [session]);
 
+  // The clocks stop while the page is hidden (another tab, a locked phone).
+  useEffect(() => {
+    const onVisibility = () => {
+      session.setHidden(document.visibilityState === 'hidden');
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [session]);
+
   useEffect(() => {
     document.documentElement.lang = language;
     document.title = t('title');
