@@ -403,6 +403,28 @@ describe('App', () => {
     expect(screen.getByRole('link', { name: 'Back to the game' })).toHaveAttribute('href', '#/');
   });
 
+  it('sets up a position in the editor and analyses it', async () => {
+    window.location.hash = '#/editor';
+    const { user } = renderApp();
+    expect(screen.getByRole('link', { name: 'Position editor' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    await user.click(screen.getByRole('button', { name: 'Clear the board' }));
+    expect(screen.getByRole('status')).toHaveTextContent('White has no pieces.');
+    expect(screen.getByRole('button', { name: 'Analyse' })).toBeDisabled();
+    await user.click(screen.getByRole('gridcell', { name: 'c3' }));
+    await user.click(screen.getByRole('radio', { name: 'Black king' }));
+    await user.click(screen.getByRole('gridcell', { name: 'f6' }));
+    await user.click(screen.getByRole('gridcell', { name: 'h6' }));
+    await user.click(screen.getByRole('radio', { name: 'Black' }));
+    expect(screen.getByRole<HTMLInputElement>('textbox', { name: 'FEN' }).value).toBe(
+      'B:Wc3:BKf6,Kh6',
+    );
+    await user.click(screen.getByRole('button', { name: 'Analyse' }));
+    expect(window.location.hash).toBe('#/analysis?fen=B:Wc3:BKf6,Kh6');
+  });
+
   it('switches language', async () => {
     const { user } = renderApp();
     await user.click(screen.getByRole('button', { name: 'TR' }));
