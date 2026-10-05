@@ -14,9 +14,9 @@ import {
 } from '../engine';
 import type { AiClient, Level } from '../ai';
 import type { ReviewPosition } from '../ai';
-import { AnalysisClient, LEVEL_OPTIONS, MATE, ReviewClient } from '../ai';
+import { AnalysisClient, LEVEL_OPTIONS, MATE, ReviewClient, winningChances } from '../ai';
 import type { ReviewedMove, SideSummary } from './review';
-import { judgeMoves, summarise } from './review';
+import { INACCURACY, judgeMoves, summarise } from './review';
 import type { ClockView } from './clock';
 import { Clock, LOW_TIME_MS, aiBudget } from './clock';
 import type { UiPiece } from './pieces';
@@ -133,7 +133,30 @@ export interface Snapshot {
   readonly review: GameReview | null;
   /** In a reviewed game, the engine's choice in the position shown. */
   readonly bestMove: BoardLine | null;
+  readonly practice: Practice | null;
 }
+
+/** Where the player stands in "Learn from your mistakes". */
+export type PracticeStatus = 'try' | 'checking' | 'right' | 'good' | 'wrong' | 'shown' | 'done';
+
+/** "Learn from your mistakes" (lichess): replay each mistake and look for a better move. */
+export interface Practice {
+  readonly status: PracticeStatus;
+  /** Which mistake, from 0, and how many there are. */
+  readonly index: number;
+  readonly total: number;
+  /** The side to find a move for, and the mistake it made, in TÜDAF notation. */
+  readonly side: Color;
+  readonly played: string;
+  /** The player's latest try. */
+  readonly tried: string | null;
+  /** The engine's choice; only given once found or shown. */
+  readonly best: string | null;
+}
+
+/** How long a wrong try stays on the board before the position comes back. */
+export const PRACTICE_RETRY_MS = 1200;
+const REVEALED: readonly PracticeStatus[] = ['right', 'good', 'shown'];
 
 /** A line on the board: a start square and its landing squares. */
 export interface BoardLine {
@@ -209,6 +232,16 @@ export class GameSession {
     /** The engine's choice in TÜDAF notation, filled in as positions arrive. */
     bestMoves: (string | null)[];
     done: boolean;
+  } | null = null;
+  #practice: {
+    items: ReviewedMove[];
+    index: number;
+    status: PracticeStatus;
+    /** The position before the mistake, where the player looks for a better move. */
+    game: Game | null;
+    tried: string | null;
+    timer: ReturnType<typeof setTimeout> | undefined;
+    token: number;
   } | null = null;
   /** Rebuilt only when the review changes, not on every snapshot. */
   #reviewSnapshot: GameReview | null = null;
@@ -304,6 +337,10 @@ export class GameSession {
   // --- Actions ----------------------------------------------------------------
 
   readonly clickSquare = (square: Square): void => {
+    if (this.#practice) {
+      this.#practiceClick(square);
+      return;
+    }
     if (this.#canPremove()) {
       this.#premoveClick(square);
       return;
@@ -503,6 +540,63 @@ export class GameSession {
     );
   };
 
+  /**
+   * Starts "Learn from your mistakes" on a reviewed game: the player's mistakes and blunders
+   * (both sides' with two players), one at a time.
+   */
+  readonly startPractice = (): void => {
+    const review = this.#reviewSnapshot;
+    if (!review?.done || this.#practice) return;
+    const human = this.#settings?.human ?? 1;
+    const hotseat = this.#hotseat();
+    const items = review.moves.filter(
+      (move) =>
+        (move.judgement === 'mistake' || move.judgement === 'blunder') &&
+        (hotseat || move.side === human),
+    );
+    this.#practice = {
+      items,
+      index: 0,
+      status: 'done',
+      game: null,
+      tried: null,
+      timer: undefined,
+      token: 0,
+    };
+    this.#analysis.stop();
+    this.#evaluation = null;
+    this.#practiceGo(0);
+  };
+
+  /** Goes on to the next mistake. */
+  readonly nextPractice = (): void => {
+    if (this.#practice) this.#practiceGo(this.#practice.index + 1);
+  };
+
+  /** Shows the engine's move on the position before the mistake. */
+  readonly showSolution = (): void => {
+    const practice = this.#practice;
+    const item = practice?.items[practice.index];
+    if (!practice || !item || practice.status === 'done') return;
+    clearTimeout(practice.timer);
+    practice.token++;
+    practice.status = 'shown';
+    this.#view = this.#positionAt(item.ply);
+    this.#selection = null;
+    this.#emit();
+  };
+
+  /** Leaves the practice; the board stays on the position before the mistake. */
+  readonly stopPractice = (): void => {
+    const practice = this.#practice;
+    if (!practice) return;
+    const item = practice.items[practice.index];
+    this.#endPractice();
+    if (item) this.#view = this.#positionAt(item.ply);
+    this.#refreshEvaluation();
+    this.#emit();
+  };
+
   /** Clears a queued premove and a premove being picked. */
   readonly cancelPremove = (): void => {
     if (this.#premove === null && this.#premoveFrom === null) return;
@@ -520,13 +614,15 @@ export class GameSession {
   readonly showPly = (ply: number): void => {
     const length = this.#game.history.length;
     const target = Math.max(0, Math.min(length, Math.trunc(ply)));
+    // Browsing ends the practice; its position may not be one of the game's.
+    const practising = this.#endPractice();
     const current = this.#view?.ply ?? length;
-    if (target === current) return;
+    if (target === current && !practising) return;
     const move = this.#game.history[current];
     if (target === length) {
       this.#view = null;
       this.#missedMoves = 0;
-    } else if (this.#view && target === current + 1 && move) {
+    } else if (this.#view && target === current + 1 && move && !practising) {
       const next = applyMove(this.#view.pieces, move);
       this.#view = { ply: target, pieces: next.pieces, captured: next.captured, lastMove: move };
     } else {
@@ -757,6 +853,8 @@ export class GameSession {
    * with the bar hidden (or no game yet) nothing is analysed.
    */
   #refreshEvaluation(): void {
+    // Practice runs its own analysis of the player's tries.
+    if (this.#practice) return;
     // Hidden means hidden, also once the game is over.
     if (!this.#showEvaluation || !this.#settings) {
       this.#analysis.stop();
@@ -871,7 +969,116 @@ export class GameSession {
     }
   }
 
+  /** Ends the practice, if any; says whether there was one. */
+  #endPractice(): boolean {
+    const practice = this.#practice;
+    if (!practice) return false;
+    clearTimeout(practice.timer);
+    this.#practice = null;
+    this.#selection = null;
+    return true;
+  }
+
+  #practiceGo(index: number): void {
+    const practice = this.#practice;
+    if (!practice) return;
+    clearTimeout(practice.timer);
+    practice.token++;
+    practice.index = index;
+    practice.tried = null;
+    const item = practice.items[index];
+    if (!item) {
+      practice.status = 'done';
+      practice.game = null;
+      this.#emit();
+      return;
+    }
+    const game = new Game();
+    for (const move of this.#game.history.slice(0, item.ply)) game.play(move);
+    practice.game = game;
+    practice.status = 'try';
+    this.#view = this.#positionAt(item.ply);
+    this.#selection = null;
+    this.#emit();
+  }
+
+  #practiceClick(square: Square): void {
+    const practice = this.#practice;
+    const game = practice?.game;
+    if (!practice || !game || practice.status !== 'try') return;
+    const result = click(game.legalMoves, this.#selection, square);
+    if (result.type === 'play') this.#practiceMove(result.move);
+    else {
+      this.#selection = result.selection;
+      this.#emit();
+    }
+  }
+
+  /** Shows the player's try on the board, then judges it against the engine's choice. */
+  #practiceMove(move: Move): void {
+    const practice = this.#practice;
+    const game = practice?.game;
+    const item = practice?.items[practice.index];
+    const before = item ? this.#review?.positions[item.ply] : undefined;
+    if (!practice || !game || !item || !before || !this.#view) return;
+    practice.tried = moveToTudafNotation(move, game.legalMoves);
+    const next = applyMove(this.#view.pieces, move);
+    this.#view = {
+      ply: item.ply + 1,
+      pieces: next.pieces,
+      captured: next.captured,
+      lastMove: move,
+    };
+    this.#selection = null;
+    const landing = moveToNotation(move);
+    if (landing === item.best) {
+      practice.status = 'right';
+      this.#emit();
+      return;
+    }
+    practice.status = 'checking';
+    this.#emit();
+
+    const token = ++practice.token;
+    const judge = (score: number) => {
+      if (this.#practice !== practice || practice.token !== token) return;
+      const side = item.side;
+      const loss = side * winningChances(before.score) - side * winningChances(score);
+      if (loss < INACCURACY) {
+        practice.status = 'good';
+        this.#emit();
+        return;
+      }
+      practice.status = 'wrong';
+      this.#emit();
+      practice.timer = setTimeout(() => {
+        if (this.#practice !== practice || practice.token !== token) return;
+        practice.status = 'try';
+        this.#view = this.#positionAt(item.ply);
+        this.#emit();
+      }, PRACTICE_RETRY_MS);
+    };
+
+    const after = new Game();
+    for (const played of this.#game.history.slice(0, item.ply)) after.play(played);
+    after.play(landing);
+    if (after.isOver) {
+      const winner = after.result?.winner ?? null;
+      judge(winner === null ? 0 : winner * MATE);
+      return;
+    }
+    this.#analysis.analyse(
+      INITIAL_FEN,
+      [...this.#moves().slice(0, item.ply), landing],
+      (update) => {
+        if (update.done) judge(update.score);
+      },
+      { timeMs: 900, maxDepth: 14 },
+    );
+  }
+
   #stopReview(): void {
+    this.#endPractice();
     if (!this.#review) return;
     this.#reviewer.stop();
     this.#review = null;
@@ -898,11 +1105,37 @@ export class GameSession {
     };
   }
 
+  #practiceSnapshot(): Practice | null {
+    const practice = this.#practice;
+    if (!practice) return null;
+    const item = practice.items[practice.index];
+    const revealed = REVEALED.includes(practice.status);
+    return {
+      status: practice.status,
+      index: practice.index,
+      total: practice.items.length,
+      side: item?.side ?? 1,
+      played: item ? (this.#game.moveList[item.ply] ?? item.played) : '',
+      tried: practice.tried,
+      best: item && revealed ? (this.#review?.bestMoves[item.ply] ?? item.best) : null,
+    };
+  }
+
   /** The engine's choice in the position shown, once the review has reached it. */
   #bestMove(): BoardLine | null {
-    const best = this.#review?.positions[this.#displayedPly()]?.best;
-    if (!best) return null;
-    const [from, ...path] = best.split(/[x-]/).map(parseSquare);
+    // While practising, the answer stays hidden until it is found or asked for.
+    const practice = this.#practice;
+    if (practice) {
+      const item = practice.items[practice.index];
+      if (!item || practice.status !== 'shown') return null;
+      return this.#line(this.#review?.positions[item.ply]?.best);
+    }
+    return this.#line(this.#review?.positions[this.#displayedPly()]?.best);
+  }
+
+  #line(notation: string | null | undefined): BoardLine | null {
+    if (!notation) return null;
+    const [from, ...path] = notation.split(/[x-]/).map(parseSquare);
     return from === undefined ? null : { from, path };
   }
 
@@ -977,7 +1210,14 @@ export class GameSession {
   #build(): Snapshot {
     const game = this.#game;
     const human = this.#settings?.human ?? 1;
-    const humanMoves = this.#canPlay() ? game.legalMoves : [];
+    const practice = this.#practice;
+    // While practising, the player moves in the position before the mistake.
+    const humanMoves =
+      practice?.status === 'try' && practice.game
+        ? practice.game.legalMoves
+        : this.#canPlay()
+          ? game.legalMoves
+          : [];
     const view = this.#view;
     // The human has a move to take back once they have played at least once; with two
     // players, any move can be taken back.
@@ -993,7 +1233,7 @@ export class GameSession {
       lastMove: view ? view.lastMove : this.#lastMove,
       moveNumber: view?.ply ?? game.history.length,
       liveMoveNumber: game.history.length,
-      browsing: view !== null,
+      browsing: view !== null && practice === null,
       missedMoves: this.#missedMoves,
       turn: game.turn,
       result: game.result,
@@ -1007,7 +1247,8 @@ export class GameSession {
       moveList: game.moveList,
       drawOffersLeft: MAX_DRAW_OFFERS - this.#drawOffers,
       notice: this.#notice,
-      evaluation: this.#evaluation,
+      // The evaluation would give the answer away while practising.
+      evaluation: practice ? null : this.#evaluation,
       showEvaluation: this.#showEvaluation,
       flipped: this.#flipped,
       canUndo: this.#settings !== null && !game.isOver && humanPlies > 0,
@@ -1030,6 +1271,7 @@ export class GameSession {
       clock: this.#clock?.view() ?? null,
       review: this.#reviewSnapshot,
       bestMove: this.#bestMove(),
+      practice: this.#practiceSnapshot(),
     };
   }
 }

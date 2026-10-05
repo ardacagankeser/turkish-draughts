@@ -518,7 +518,8 @@ a {
 }
 
 .controls button,
-.actions button {
+.actions button,
+.practice-actions button {
   padding: 9px 10px;
   border-radius: 8px;
   border: 1px solid var(--border);
@@ -528,7 +529,8 @@ a {
 }
 
 .controls button:hover:not(:disabled),
-.actions button:hover:not(:disabled) {
+.actions button:hover:not(:disabled),
+.practice-actions button:hover {
   border-color: var(--accent);
 }
 
@@ -1366,4 +1368,40 @@ kbd {
 .move .symbol {
   margin-left: 2px;
   font-weight: 700;
+}
+
+.review .learn {
+  width: 100%;
+  margin-top: 10px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--accent);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.practice {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.practice-title {
+  margin: 0 0 8px;
+  font-weight: 600;
+}
+
+.practice-title span {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.practice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.practice-actions button {
+  flex: 1;
 }

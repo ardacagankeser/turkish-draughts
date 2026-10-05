@@ -5,11 +5,12 @@ import type { MessageKey } from '../i18n';
 import { useI18n } from '../i18n';
 import type { Judgement } from '../review';
 import { judgementKey } from '../review';
-import type { GameReview } from '../session';
+import type { GameReview, Practice } from '../session';
 
 const WIDTH = 600;
 const HEIGHT = 120;
 const MARKED: readonly Judgement[] = ['blunder', 'mistake', 'inaccuracy'];
+const REVEALED: readonly Practice['status'][] = ['right', 'good', 'shown'];
 
 /**
  * The review of a finished game: progress while the engine works, then each side's
@@ -21,6 +22,8 @@ export function ReviewPanel({
   white,
   black,
   onPly,
+  practice,
+  onPractice,
 }: {
   review: GameReview;
   moveNumber: number;
@@ -28,6 +31,13 @@ export function ReviewPanel({
   white: string;
   black: string;
   onPly: (ply: number) => void;
+  practice: Practice | null;
+  onPractice: {
+    readonly start: () => void;
+    readonly next: () => void;
+    readonly solution: () => void;
+    readonly stop: () => void;
+  };
 }) {
   const { t } = useI18n();
   const plies = review.scores.length - 1;
@@ -120,6 +130,39 @@ export function ReviewPanel({
           {side(-1, black)}
         </tbody>
       </table>
+      {review.done && !practice && (
+        <button type="button" className="primary learn" onClick={onPractice.start}>
+          {t('learnMistakes')}
+        </button>
+      )}
+      {practice && (
+        <div className="practice" role="group" aria-label={t('learnMistakes')}>
+          <p className="practice-title">
+            {t('learnMistakes')}
+            {practice.total > 0 && practice.status !== 'done' && (
+              <span>
+                {' '}
+                · {t('practiceProgress', { n: practice.index + 1, total: practice.total })}
+              </span>
+            )}
+          </p>
+          <div className="practice-actions">
+            {(practice.status === 'try' || practice.status === 'wrong') && (
+              <button type="button" onClick={onPractice.solution}>
+                {t('showSolution')}
+              </button>
+            )}
+            {practice.status !== 'done' && practice.status !== 'checking' && (
+              <button type="button" className="primary" onClick={onPractice.next}>
+                {REVEALED.includes(practice.status) ? t('nextMistake') : t('skipMistake')}
+              </button>
+            )}
+            <button type="button" onClick={onPractice.stop}>
+              {practice.status === 'done' ? t('close') : t('stopPractice')}
+            </button>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
