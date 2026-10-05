@@ -72,7 +72,7 @@ export interface Evaluation {
 export interface Snapshot {
   readonly settings: Settings | null;
   readonly pieces: readonly UiPiece[];
-  /** Pieces captured by the last move, kept for the fade-out animation. */
+  /** Pieces captured by the last move, kept for the fly-off animation. */
   readonly captured: readonly UiPiece[];
   readonly lastMove: Move | null;
   /** Number of moves played to reach the position shown. */

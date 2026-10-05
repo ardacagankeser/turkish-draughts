@@ -2,6 +2,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
 import type { Move, Piece, Square } from '../../engine';
 import { squareName } from '../../engine';
+import { GHOST_OPACITY, HOP_MS, SLIDE_MS, VANISH_MS, hopStart, vanishStart } from '../animation';
 import type { Shape } from '../drawing';
 import { toggleShape } from '../drawing';
 import type { MessageKey } from '../i18n';
@@ -11,8 +12,6 @@ import type { Selection } from '../selection';
 import { destinations, movableSquares, nextSquares } from '../selection';
 import type { Premove } from '../session';
 
-/** Milliseconds per step of a move's path. */
-export const STEP_MS = 170;
 /** Pointer travel (px) before a press on a piece becomes a drag rather than a click. */
 const DRAG_THRESHOLD = 4;
 const DRAWING_COLOUR = '#15781b';
@@ -63,6 +62,21 @@ const transform = (square: Square, flipped: boolean) => {
   return `translate(${x * 100}%, ${y * 100}%)`;
 };
 
+const canAnimate = (element: HTMLElement | undefined): element is HTMLElement =>
+  element !== undefined && typeof element.animate === 'function';
+
+/** A jumped piece flies off: it rises, shrinks and fades, starting `delay` ms from now. */
+function flyOff(element: HTMLElement, square: Square, flipped: boolean, delay: number, from = 1) {
+  const at = transform(square, flipped);
+  element.animate(
+    [
+      { transform: `${at} scale(1)`, opacity: from },
+      { transform: `${at} translateY(-35%) scale(0.6)`, opacity: 0 },
+    ],
+    { delay, duration: VANISH_MS, easing: 'ease-in', fill: 'both' },
+  );
+}
+
 interface Press {
   readonly pointerId: number;
   readonly square: Square;
@@ -80,6 +94,7 @@ export function Board(props: BoardProps) {
   const { premove, premoveFrom, premoveTargets, premovable, ghosts } = props;
   const { t } = useI18n();
   const pieceElements = useRef(new Map<number, HTMLDivElement>());
+  const capturedElements = useRef(new Map<number, HTMLDivElement>());
   const squareElements = useRef(new Map<Square, HTMLButtonElement>());
   const squaresElement = useRef<HTMLDivElement>(null);
   const press = useRef<Press | null>(null);
@@ -125,30 +140,69 @@ export function Board(props: BoardProps) {
   const draggable = (square: Square): boolean =>
     movable.has(square) || premovableSet.has(square) || square === pending;
 
-  // Animate a newly played move along its path; the piece is already on its final square.
+  // Animate a newly played move; the pieces are already where the move leaves them.
   // Loading a saved game, taking back or starting over changes the position without a move.
-  // A dropped quiet move is already where it belongs; a capture always hops from its
-  // starting square through every landing square, however it was played.
+  // A capture plays beat by beat: hop to a landing square, then the jumped piece flies off.
+  // Steps the player already chose on the board are not replayed (their pieces were faded
+  // then, and fly off with the first remaining beat), and a piece dropped on its final
+  // square stays there while every jumped piece flies off at once.
   const previousMoveNumber = useRef(moveNumber);
+  const previousSelection = useRef(selection);
   useLayoutEffect(() => {
     const previous = previousMoveNumber.current;
     previousMoveNumber.current = moveNumber;
     if (!lastMove || moveNumber !== previous + 1) return;
-    if (droppedAt.current === moveNumber && lastMove.captures.length === 0) return;
+    const dropped = droppedAt.current === moveNumber;
+    const steps = [lastMove.from, ...lastMove.path];
     const mover = pieces.find((piece) => piece.square === lastMove.to);
     const element = mover ? pieceElements.current.get(mover.id) : undefined;
-    if (!element || typeof element.animate !== 'function') return;
-    const frames = [lastMove.from, ...lastMove.path].map((square) => ({
-      transform: transform(square, flipped),
-    }));
-    element.animate(frames, { duration: STEP_MS * lastMove.path.length, easing: 'ease-in-out' });
+    const at = (square: Square) => transform(square, flipped);
+
+    if (lastMove.captures.length === 0) {
+      if (dropped || !canAnimate(element)) return;
+      element.animate(
+        steps.map((square) => ({ transform: at(square) })),
+        { duration: SLIDE_MS * lastMove.path.length, easing: 'ease-in-out' },
+      );
+      return;
+    }
+
+    // Landing squares already chosen, when the player finished this chain on the board.
+    const chosen = previousSelection.current;
+    const done =
+      chosen !== null &&
+      chosen.from === lastMove.from &&
+      chosen.path.length < lastMove.path.length &&
+      chosen.path.every((square, index) => square === lastMove.path[index])
+        ? chosen.path.length
+        : 0;
+    const beats = lastMove.path.length - done;
+
+    if (!dropped && canAnimate(element)) {
+      const total = hopStart(beats - 1) + HOP_MS;
+      const frames: Keyframe[] = [];
+      for (let beat = 0; beat < beats; beat++) {
+        const from = steps[done + beat] ?? lastMove.from;
+        const to = steps[done + beat + 1] ?? lastMove.to;
+        frames.push({ offset: hopStart(beat) / total, transform: at(from), easing: 'ease-in-out' });
+        frames.push({ offset: (hopStart(beat) + HOP_MS) / total, transform: at(to) });
+      }
+      element.animate(frames, { duration: total });
+    }
+    // The jumped pieces in the order they were captured.
+    lastMove.captures.forEach((square, index) => {
+      const piece = captured.find((candidate) => candidate.square === square);
+      const jumped = piece ? capturedElements.current.get(piece.id) : undefined;
+      if (!canAnimate(jumped)) return;
+      const delay = dropped ? 0 : vanishStart(Math.max(0, index - done));
+      flyOff(jumped, square, flipped, delay, index < done ? GHOST_OPACITY : 1);
+    });
     // Only when a new move is played; flipping the board should not replay it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moveNumber]);
 
-  // A step of a capture chain chosen by clicking hops to the new landing square; a step
-  // chosen by dropping the piece there needs no animation.
-  const previousSelection = useRef(selection);
+  // A step of a capture chain chosen by clicking hops to the new landing square, then the
+  // jumped piece fades; a step chosen by dropping the piece there needs no animation.
   useLayoutEffect(() => {
     const before = previousSelection.current;
     previousSelection.current = selection;
@@ -163,8 +217,19 @@ export function Board(props: BoardProps) {
     const start = before.path.at(-1) ?? before.from;
     element.animate(
       [{ transform: transform(start, flipped) }, { transform: transform(pending, flipped) }],
-      { duration: STEP_MS, easing: 'ease-in-out' },
+      { duration: HOP_MS, easing: 'ease-in-out' },
     );
+    const jumpedSquare = ghosts.at(-1);
+    const jumped = pieces.find((piece) => piece.square === jumpedSquare);
+    const ghost = jumped ? pieceElements.current.get(jumped.id) : undefined;
+    if (canAnimate(ghost)) {
+      ghost.animate([{ opacity: 1 }, { opacity: GHOST_OPACITY }], {
+        delay: HOP_MS,
+        duration: VANISH_MS,
+        easing: 'ease-in',
+        fill: 'backwards',
+      });
+    }
     // Only when the chain advances.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selection]);
@@ -247,7 +312,9 @@ export function Board(props: BoardProps) {
     if (current.dragging) {
       setDrag(null);
       if (target !== null && target !== current.square) {
-        droppedAt.current = moveNumber + 1;
+        // A premove is dropped before the computer's reply, which must still be animated.
+        const ownMove = movable.has(current.square) || current.square === pending;
+        droppedAt.current = ownMove ? moveNumber + 1 : -1;
         droppedStep.current = target;
         props.onSquare(target);
       }
@@ -388,16 +455,16 @@ export function Board(props: BoardProps) {
         {squares}
       </div>
       <div className="pieces" aria-hidden="true">
-        {captured.map((piece, index) => (
+        {captured.map((piece) => (
           <div
             key={`captured-${piece.id}-${moveNumber}`}
-            className={`piece ${pieceClass(piece.piece)} captured`}
-            style={{
-              transform: transform(piece.square, flipped),
-              // Each captured piece fades as the mover jumps over it.
-              animationDelay: `${Math.round(STEP_MS * (index + 0.5))}ms`,
-              animationDuration: `${STEP_MS}ms`,
+            ref={(element) => {
+              if (element) capturedElements.current.set(piece.id, element);
+              else capturedElements.current.delete(piece.id);
             }}
+            className={`piece ${pieceClass(piece.piece)} captured`}
+            // Hidden unless the move's animation flies it off.
+            style={{ transform: transform(piece.square, flipped) }}
           />
         ))}
         {pieces.map((piece) => {

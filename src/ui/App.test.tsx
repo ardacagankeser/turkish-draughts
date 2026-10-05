@@ -2,8 +2,9 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryStorage, fakeAi, fakeAnalysis } from '../test/fakes';
+import { HOP_MS } from './animation';
 import { App } from './App';
 import { MESSAGES, detectLanguage, translator } from './i18n';
 
@@ -147,7 +148,9 @@ describe('App', () => {
     expect(container.querySelectorAll('.drawings polyline, .drawings circle')).toHaveLength(0);
   });
 
-  it('shows a capture chain step by step, then plays it from the start', async () => {
+  it('shows a capture chain step by step, and finishes it where the piece is dropped', async () => {
+    const animate = vi.fn();
+    HTMLElement.prototype.animate = animate;
     // After these moves White must take three pieces: d4xd6xb6xb8.
     const storage = new MemoryStorage();
     storage.setItem(
@@ -160,6 +163,10 @@ describe('App', () => {
     const { user, container } = renderApp(storage);
     await user.click(screen.getByRole('gridcell', { name: 'd4, white man' }));
     await user.click(screen.getByRole('gridcell', { name: 'd6' }));
+    // A clicked step hops to the landing square, then the jumped piece fades.
+    expect(animate).toHaveBeenCalledTimes(2);
+    expect(animate.mock.calls[1]?.[1]).toMatchObject({ delay: HOP_MS });
+    animate.mockClear();
     // The man now shows, faded, on the landing square; the jumped piece is faded too.
     expect(screen.getByRole('gridcell', { name: 'd6, white man' })).toBeInTheDocument();
     expect(screen.getByRole('gridcell', { name: 'd4' })).toBeInTheDocument();
@@ -174,6 +181,10 @@ describe('App', () => {
     fireEvent.pointerUp(b8, { button: 0, pointerId: 4, clientX: -60, clientY: -60 });
     expect(screen.getByText('d4xd5xc6xb7')).toBeInTheDocument();
     expect(screen.getByRole('gridcell', { name: 'b8, white king' })).toBeInTheDocument();
+    // Dropped in place, the piece does not move again: the three jumped pieces fly off at once.
+    expect(animate).toHaveBeenCalledTimes(3);
+    for (const [, options] of animate.mock.calls) expect(options).toMatchObject({ delay: 0 });
+    delete (HTMLElement.prototype as Partial<HTMLElement>).animate;
   });
 
   it('shows the focus ring only for keyboard navigation, not for Shift', async () => {
@@ -245,9 +256,10 @@ describe('App', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     // The finished game stays finished: only a new game (or flipping the board) is possible.
     expect(screen.getByRole('status')).toHaveTextContent('Game over: You lose. By resignation.');
-    for (const name of ['Take back', 'Hint', /Offer draw/, 'Resign']) {
+    for (const name of ['Take back', 'Hint', /Offer draw/, 'Resign', 'Play']) {
       expect(screen.getByRole('button', { name })).toBeDisabled();
     }
+    expect(screen.getByRole('textbox', { name: 'Type a move' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'New game' })).toBeEnabled();
   });
 });
