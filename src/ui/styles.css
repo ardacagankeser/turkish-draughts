@@ -1,22 +1,20 @@
 /* Design tokens ---------------------------------------------------------- */
 :root {
+  /* Colours follow the system theme unless the player picks one (data-theme). */
   color-scheme: light dark;
-  --bg: #f4efe6;
-  --surface: #fffaf2;
-  --surface-2: #f0e7d8;
-  --text: #2b2118;
-  --text-muted: #6f6152;
-  --border: #dccdb6;
-  --accent: #b5502a;
-  --accent-text: #fff;
-  --danger: #b3261e;
-  --danger-text: #fff;
-  --focus: #1f6feb;
+  --bg: light-dark(#f4efe6, #17130f);
+  --surface: light-dark(#fffaf2, #221c16);
+  --surface-2: light-dark(#f0e7d8, #2c241c);
+  --text: light-dark(#2b2118, #f1e8dc);
+  --text-muted: light-dark(#6f6152, #b3a492);
+  --border: light-dark(#dccdb6, #3d3228);
+  --accent: light-dark(#b5502a, #e0703f);
+  /* Dark text on the bright dark-theme accent and danger colours keeps WCAG AA contrast. */
+  --accent-text: light-dark(#ffffff, #1c1209);
+  --danger: light-dark(#b3261e, #f2867d);
+  --danger-text: light-dark(#ffffff, #1c1209);
+  --focus: light-dark(#1f6feb, #58a6ff);
 
-  --wood: #e2c08d;
-  --wood-grain: #d4ac72;
-  --line: rgba(80, 50, 20, 0.35);
-  --frame: #6b4423;
   --last: rgba(255, 214, 102, 0.55);
   --selected: rgba(46, 125, 50, 0.55);
   --next: rgba(46, 125, 50, 0.8);
@@ -24,27 +22,71 @@
   --hint: rgba(31, 111, 235, 0.45);
 
   --radius: 12px;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.08), 0 6px 20px rgba(60, 40, 20, 0.08);
+  --shadow:
+    0 1px 2px light-dark(rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.4)),
+    0 6px 20px light-dark(rgba(60, 40, 20, 0.08), rgba(0, 0, 0, 0.35));
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #17130f;
-    --surface: #221c16;
-    --surface-2: #2c241c;
-    --text: #f1e8dc;
-    --text-muted: #b3a492;
-    --border: #3d3228;
-    --accent: #e0703f;
-    /* Dark text on the bright accent and danger colours keeps WCAG AA contrast. */
-    --accent-text: #1c1209;
-    --danger: #f2867d;
-    --danger-text: #1c1209;
-    --focus: #58a6ff;
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 20px rgba(0, 0, 0, 0.35);
-  }
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+}
+
+/* Boards (data-board): the default is wood. ------------------------------- */
+:root {
+  --board: #e2c08d;
+  --board-2: #d4ac72;
+  --grain: rgba(120, 80, 30, 0.05);
+  --line: rgba(80, 50, 20, 0.35);
+  --frame: #6b4423;
+  --coord: rgba(70, 40, 15, 0.75);
+  --coord-glow: rgba(255, 240, 210, 0.9);
+}
+
+:root[data-board='classic'] {
+  --board: #f3ead2;
+  --board-2: #efe3c4;
+  --grain: transparent;
+  --line: rgba(40, 30, 20, 0.6);
+  --frame: #3b2f25;
+  --coord: rgba(40, 30, 20, 0.8);
+  --coord-glow: rgba(255, 250, 235, 0.9);
+}
+
+:root[data-board='green'] {
+  --board: #a9c58a;
+  --board-2: #97b878;
+  --grain: transparent;
+  --line: rgba(30, 60, 20, 0.45);
+  --frame: #3f5a2c;
+  --coord: rgba(25, 50, 15, 0.85);
+  --coord-glow: rgba(235, 250, 220, 0.9);
+}
+
+:root[data-board='blue'] {
+  --board: #a9c3d9;
+  --board-2: #95b3cd;
+  --grain: transparent;
+  --line: rgba(20, 45, 75, 0.45);
+  --frame: #2f4a66;
+  --coord: rgba(15, 35, 60, 0.85);
+  --coord-glow: rgba(230, 242, 252, 0.9);
+}
+
+:root[data-board='contrast'] {
+  --board: #ffffff;
+  --board-2: #ffffff;
+  --grain: transparent;
+  --line: #000000;
+  --frame: #000000;
+  --coord: #000000;
+  --coord-glow: #ffffff;
+  --last: rgba(255, 196, 0, 0.6);
 }
 
 /* Base ------------------------------------------------------------------- */
@@ -173,10 +215,10 @@ a {
     repeating-linear-gradient(
       92deg,
       transparent 0 14px,
-      rgba(120, 80, 30, 0.05) 14px 16px,
+      var(--grain) 14px 16px,
       transparent 16px 31px
     ),
-    linear-gradient(135deg, var(--wood), var(--wood-grain));
+    linear-gradient(135deg, var(--board), var(--board-2));
   user-select: none;
   touch-action: manipulation;
 }
@@ -261,8 +303,8 @@ a {
   font-size: clamp(8px, 1.4vw, 12px);
   font-weight: 700;
   line-height: 1;
-  color: rgba(70, 40, 15, 0.75);
-  text-shadow: 0 0 2px rgba(255, 240, 210, 0.9);
+  color: var(--coord);
+  text-shadow: 0 0 2px var(--coord-glow);
 }
 
 .coord.file {
@@ -1045,4 +1087,114 @@ kbd {
 .notice.damaAlti {
   font-size: 1.4rem;
   color: #ffd166;
+}
+
+/* Piece styles (data-pieces): the default is classic. A king's top disc has a gold ring. */
+:root[data-pieces='flat'] .piece.white::before {
+  background: #f7f2ea;
+  box-shadow: inset 0 0 0 2px #9d8f7d;
+}
+
+:root[data-pieces='flat'] .piece.black::before {
+  background: #2e2a27;
+  box-shadow: inset 0 0 0 2px #6d6660;
+}
+
+:root[data-pieces='flat'] .piece.white.king::after {
+  background: #f7f2ea;
+  box-shadow: inset 0 0 0 3px #c79a3a;
+}
+
+:root[data-pieces='flat'] .piece.black.king::after {
+  background: #2e2a27;
+  box-shadow: inset 0 0 0 3px #c79a3a;
+}
+
+:root[data-pieces='contrast'] .piece.white::before {
+  background: #ffffff;
+  box-shadow: inset 0 0 0 3px #000000;
+}
+
+:root[data-pieces='contrast'] .piece.black::before {
+  background: #000000;
+  box-shadow: inset 0 0 0 3px #ffffff;
+}
+
+:root[data-pieces='contrast'] .piece.white.king::after {
+  background: #ffffff;
+  box-shadow:
+    inset 0 0 0 3px #000000,
+    inset 0 0 0 6px #e0a800;
+}
+
+:root[data-pieces='contrast'] .piece.black.king::after {
+  background: #000000;
+  box-shadow:
+    inset 0 0 0 3px #ffffff,
+    inset 0 0 0 6px #e0a800;
+}
+
+/* Display preferences ------------------------------------------------------ */
+:root[data-coordinates='off'] .coords {
+  display: none;
+}
+
+:root[data-legal-moves='off'] .square.next::after,
+:root[data-legal-moves='off'] .square.final::after {
+  display: none;
+}
+
+:root[data-last-move='off'] .square.last {
+  background: transparent;
+}
+
+/* Settings dialog ------------------------------------------------------------ */
+.dialog.settings {
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+
+.setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+}
+
+.setting select {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  min-width: 10rem;
+}
+
+.setting input[type='range'] {
+  width: 10rem;
+  accent-color: var(--accent);
+}
+
+.setting.check {
+  justify-content: flex-start;
+  align-items: flex-start;
+  cursor: pointer;
+}
+
+.setting.check input {
+  margin: 4px 0 0;
+  accent-color: var(--accent);
+}
+
+.setting small,
+.setting-hint {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.setting-hint {
+  margin: 0 0 4px;
 }

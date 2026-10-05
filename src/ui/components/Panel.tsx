@@ -61,7 +61,8 @@ export function Panel({ game, session, onNewGame }: PanelProps) {
     status = `${/[.!?]$/.test(head) ? head : `${head}.`} ${t(reasonKey(game.result))}`;
   } else if (game.thinking && game.turn !== human) status = t('thinking');
   else if (game.turn === human) {
-    if (game.selection && game.selection.path.length > 0) status = t('continueChain');
+    if (game.confirming) status = t('confirmMove');
+    else if (game.selection && game.selection.path.length > 0) status = t('continueChain');
     else if ((game.humanMoves[0]?.captures.length ?? 0) > 0) status = t('mustCapture');
     else status = t('yourTurn');
   }

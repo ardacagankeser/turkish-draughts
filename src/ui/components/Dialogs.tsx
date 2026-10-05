@@ -3,10 +3,14 @@ import type { KeyboardEvent, ReactNode } from 'react';
 import type { Color, GameResult } from '../../engine';
 import type { Level } from '../../ai';
 import { LEVELS } from '../../ai';
-import { levelKey, reasonKey, useI18n } from '../i18n';
+import type { Language, MessageKey } from '../i18n';
+import { LANGUAGES, levelKey, reasonKey, useI18n } from '../i18n';
+import type { Preferences } from '../preferences';
+import { ANIMATION_SPEEDS, BOARDS, PIECE_STYLES, THEMES } from '../preferences';
 import type { Settings } from '../storage';
 
-const FOCUSABLE = 'button:not(:disabled), input:not(:disabled), [href], [tabindex="0"]';
+const FOCUSABLE =
+  'button:not(:disabled), input:not(:disabled), select:not(:disabled), [href], [tabindex="0"]';
 
 /**
  * A modal dialog: focuses its first control, keeps Tab inside, closes on Escape when it can
@@ -16,10 +20,12 @@ function Dialog({
   title,
   children,
   onClose,
+  className,
 }: {
   title: string;
   children: ReactNode;
   onClose?: (() => void) | null;
+  className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -54,7 +60,7 @@ function Dialog({
     <div className="backdrop">
       <div
         ref={ref}
-        className="dialog"
+        className={className ? `dialog ${className}` : 'dialog'}
         role="dialog"
         aria-modal="true"
         aria-label={title}
@@ -93,6 +99,144 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
           </div>
         ))}
       </dl>
+      <div className="actions">
+        <button type="button" className="primary" onClick={onClose}>
+          {t('close')}
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+
+const LANGUAGE_NAMES: Record<Language, string> = { tr: 'Türkçe', en: 'English' };
+
+/** Display, game and sound preferences, applied as they are changed. */
+export function SettingsDialog({
+  preferences,
+  onChange,
+  showEvaluation,
+  onToggleEvaluation,
+  language,
+  onLanguage,
+  onClose,
+}: {
+  preferences: Preferences;
+  onChange: (preferences: Preferences) => void;
+  showEvaluation: boolean;
+  onToggleEvaluation: () => void;
+  language: Language;
+  onLanguage: (language: Language) => void;
+  onClose: () => void;
+}) {
+  const { t } = useI18n();
+  const set = <K extends keyof Preferences>(key: K, value: Preferences[K]) => {
+    onChange({ ...preferences, [key]: value });
+  };
+
+  const select = <K extends 'theme' | 'board' | 'pieces' | 'animation'>(
+    key: K,
+    label: MessageKey,
+    options: readonly Preferences[K][],
+    prefix: string,
+  ) => (
+    <label className="setting">
+      <span>{t(label)}</span>
+      <select
+        value={preferences[key]}
+        onChange={(event) => {
+          const value = options.find((option) => option === event.target.value);
+          if (value) set(key, value);
+        }}
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {t(`${prefix}.${option}` as MessageKey)}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+
+  const toggle = (checked: boolean, label: MessageKey, onToggle: () => void, hint?: MessageKey) => (
+    <label className="setting check">
+      <input type="checkbox" checked={checked} onChange={onToggle} />
+      <span>
+        {t(label)}
+        {hint && <small>{t(hint)}</small>}
+      </span>
+    </label>
+  );
+  const flag = (
+    key: 'coordinates' | 'legalMoves' | 'lastMove' | 'confirmMoves',
+    label: MessageKey,
+    hint?: MessageKey,
+  ) =>
+    toggle(
+      preferences[key],
+      label,
+      () => {
+        set(key, !preferences[key]);
+      },
+      hint,
+    );
+
+  return (
+    <Dialog title={t('settings')} onClose={onClose} className="settings">
+      <fieldset>
+        <legend>{t('settings.appearance')}</legend>
+        {select('theme', 'settings.theme', THEMES, 'theme')}
+        {select('board', 'settings.board', BOARDS, 'board')}
+        {select('pieces', 'settings.pieces', PIECE_STYLES, 'pieces')}
+        <label className="setting">
+          <span>{t('language')}</span>
+          <select
+            value={language}
+            onChange={(event) => {
+              const value = LANGUAGES.find((code) => code === event.target.value);
+              if (value) onLanguage(value);
+            }}
+          >
+            {LANGUAGES.map((code) => (
+              <option key={code} value={code}>
+                {LANGUAGE_NAMES[code]}
+              </option>
+            ))}
+          </select>
+        </label>
+      </fieldset>
+      <fieldset>
+        <legend>{t('settings.display')}</legend>
+        {flag('coordinates', 'settings.coordinates')}
+        {flag('legalMoves', 'settings.legalMoves')}
+        {flag('lastMove', 'settings.lastMove')}
+        {toggle(showEvaluation, 'settings.evaluation', onToggleEvaluation)}
+        {select('animation', 'settings.animation', ANIMATION_SPEEDS, 'animation')}
+        <p className="setting-hint">{t('settings.animationHint')}</p>
+      </fieldset>
+      <fieldset>
+        <legend>{t('settings.play')}</legend>
+        {flag('confirmMoves', 'settings.confirmMoves', 'settings.confirmMovesHint')}
+      </fieldset>
+      <fieldset>
+        <legend>{t('settings.sound')}</legend>
+        <label className="setting">
+          <span>{t('settings.volume')}</span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={5}
+            value={Math.round(preferences.volume * 100)}
+            disabled={preferences.muted}
+            onChange={(event) => {
+              set('volume', Number(event.target.value) / 100);
+            }}
+          />
+        </label>
+        {toggle(preferences.muted, 'settings.mute', () => {
+          set('muted', !preferences.muted);
+        })}
+      </fieldset>
       <div className="actions">
         <button type="button" className="primary" onClick={onClose}>
           {t('close')}

@@ -1,9 +1,10 @@
 import type { Color } from '../engine';
-import { captureDuration, vanishStart } from './animation';
+import type { Timing } from './animation';
+import { NORMAL_TIMING } from './animation';
 import type { GameEvent } from './session';
 
-const MUTED_KEY = 'turkish-draughts:muted';
-const VOLUME = 0.35;
+/** Loudness at full volume. */
+const MAX_GAIN = 0.5;
 
 /** The parts of the Web Audio API the player uses; tests pass a fake. */
 export interface AudioContextLike {
@@ -25,7 +26,7 @@ interface Tone {
 }
 
 /** The tones for an event; empty when it makes no sound. */
-export function tonesFor(event: GameEvent, human: Color): Tone[] {
+export function tonesFor(event: GameEvent, human: Color, timing: Timing = NORMAL_TIMING): Tone[] {
   const tone = (at: number, frequency: number, duration = 0.08, gain = 1): Tone => ({
     at,
     frequency,
@@ -39,13 +40,13 @@ export function tonesFor(event: GameEvent, human: Color): Tone[] {
   const tones: Tone[] = [tone(0, 330, 0.06)];
   // One tick per captured piece as it flies off. The computer's captures play out beat by
   // beat; the player has just made theirs on the board, so the ticks follow at once.
-  const tick = (i: number) => (event.by === 'computer' ? vanishStart(i) : i * 60) / 1000;
+  const tick = (i: number) => (event.by === 'computer' ? timing.vanishStart(i) : i * 60) / 1000;
   for (let i = 0; i < event.captures; i++) {
     tones.push({ ...tone(tick(i), 880, 0.05, 0.8), type: 'square' });
   }
   const after =
     event.by === 'computer' && event.captures > 0
-      ? captureDuration(event.captures) / 1000
+      ? timing.captureDuration(event.captures) / 1000
       : tick(event.captures) + 0.1;
   if (event.promotes) tones.push(tone(after, 660, 0.12), tone(after + 0.12, 990, 0.18));
   else if (event.damaAlti) tones.push(tone(after, 587, 0.1, 0.6));
@@ -66,40 +67,24 @@ function endTones(
 
 /**
  * Short synthesised sounds (no audio files). Browsers only allow audio after a user
- * gesture, so the context is created on the first click or key press.
+ * gesture, so the context is created on the first click or key press. Mute and volume
+ * come from the preferences, which remember them.
  */
 export class SoundPlayer {
-  readonly #storage: Storage;
   readonly #createContext: () => AudioContextLike | null;
   #context: AudioContextLike | null = null;
-  #muted: boolean;
+  #muted = false;
+  /** 0 to 1. */
+  #volume = 1;
 
-  constructor(
-    storage: Storage = globalThis.localStorage,
-    createContext: () => AudioContextLike | null = defaultContext,
-  ) {
-    this.#storage = storage;
+  constructor(createContext: () => AudioContextLike | null = defaultContext) {
     this.#createContext = createContext;
-    let muted = false;
-    try {
-      muted = storage.getItem(MUTED_KEY) === 'true';
-    } catch {
-      // Storage unavailable: sound stays on.
-    }
-    this.#muted = muted;
   }
 
-  get muted(): boolean {
-    return this.#muted;
-  }
-
-  setMuted(muted: boolean): void {
+  /** Sets the loudness, from 0 to 1, and mutes or unmutes. */
+  setVolume(volume: number, muted: boolean): void {
+    this.#volume = volume;
     this.#muted = muted;
-    try {
-      this.#storage.setItem(MUTED_KEY, String(muted));
-    } catch {
-      // Not remembered.
-    }
   }
 
   /** Call from a user gesture: creates or resumes the audio context. */
@@ -108,17 +93,17 @@ export class SoundPlayer {
     if (this.#context?.state === 'suspended') void this.#context.resume().catch(() => undefined);
   }
 
-  play(event: GameEvent, human: Color): number {
+  play(event: GameEvent, human: Color, timing: Timing = NORMAL_TIMING): number {
     const context = this.#context;
-    if (this.#muted || !context) return 0;
-    const tones = tonesFor(event, human);
+    if (this.#muted || this.#volume <= 0 || !context) return 0;
+    const tones = tonesFor(event, human, timing);
     for (const tone of tones) {
       const start = context.currentTime + tone.at;
       const oscillator = context.createOscillator();
       const gain = context.createGain();
       oscillator.type = tone.type;
       oscillator.frequency.value = tone.frequency;
-      gain.gain.setValueAtTime(VOLUME * tone.gain, start);
+      gain.gain.setValueAtTime(MAX_GAIN * this.#volume * tone.gain, start);
       gain.gain.exponentialRampToValueAtTime(0.0001, start + tone.duration);
       oscillator.connect(gain).connect(context.destination);
       oscillator.start(start);

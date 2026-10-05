@@ -238,6 +238,37 @@ describe('App', () => {
     );
   });
 
+  it('has a settings dialog whose choices apply at once and are remembered', async () => {
+    const { user, storage } = renderApp();
+    await user.click(screen.getByRole('button', { name: 'Start game' }));
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    const dialog = screen.getByRole('dialog', { name: 'Settings' });
+    const root = document.documentElement;
+
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Board' }), 'green');
+    expect(root.dataset.board).toBe('green');
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Theme' }), 'dark');
+    expect(root.dataset.theme).toBe('dark');
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Show coordinates' }));
+    expect(root.dataset.coordinates).toBe('off');
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Show the evaluation bar' }));
+    expect(screen.queryByRole('meter')).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Mute' }));
+    expect(within(dialog).getByRole('slider', { name: 'Volume' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Sound' })).toHaveAttribute('aria-pressed', 'false');
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Language' }), 'tr');
+    expect(screen.getByRole('dialog', { name: 'Ayarlar' })).toBeInTheDocument();
+
+    expect(JSON.parse(storage.getItem('turkish-draughts:preferences') ?? '{}')).toMatchObject({
+      board: 'green',
+      theme: 'dark',
+      coordinates: false,
+      muted: true,
+    });
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
   it('switches language', async () => {
     const { user } = renderApp();
     await user.click(screen.getByRole('button', { name: 'TR' }));

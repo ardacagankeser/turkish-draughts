@@ -2,7 +2,8 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
 import type { Move, Piece, Square } from '../../engine';
 import { squareName } from '../../engine';
-import { GHOST_OPACITY, HOP_MS, SLIDE_MS, VANISH_MS, hopStart, vanishStart } from '../animation';
+import type { Timing } from '../animation';
+import { GHOST_OPACITY } from '../animation';
 import type { Shape } from '../drawing';
 import { toggleShape } from '../drawing';
 import type { MessageKey } from '../i18n';
@@ -35,6 +36,7 @@ interface BoardProps {
   readonly premovable: readonly Square[];
   /** Pieces jumped so far in a capture chain being chosen. */
   readonly ghosts: readonly Square[];
+  readonly timing: Timing;
   readonly onSquare: (square: Square) => void;
   readonly onCancelPremove: () => void;
 }
@@ -65,15 +67,54 @@ const transform = (square: Square, flipped: boolean) => {
 const canAnimate = (element: HTMLElement | undefined): element is HTMLElement =>
   element !== undefined && typeof element.animate === 'function';
 
+/** A quiet move slides along its squares in one go. */
+function slide(element: HTMLElement, steps: readonly Square[], timing: Timing, flipped: boolean) {
+  if (steps.length < 2) return;
+  element.animate(
+    steps.map((square) => ({ transform: transform(square, flipped) })),
+    { duration: timing.slide * (steps.length - 1), easing: 'ease-in-out' },
+  );
+}
+
+/**
+ * A capture hops from landing square to landing square, pausing on each while the jumped
+ * piece flies off.
+ */
+function hop(element: HTMLElement, steps: readonly Square[], timing: Timing, flipped: boolean) {
+  const beats = steps.length - 1;
+  if (beats < 1) return;
+  const total = timing.hopStart(beats - 1) + timing.hop;
+  const frames: Keyframe[] = [];
+  for (let beat = 0; beat < beats; beat++) {
+    const from = steps[beat] ?? 0;
+    const to = steps[beat + 1] ?? from;
+    const start = timing.hopStart(beat);
+    frames.push({
+      offset: start / total,
+      transform: transform(from, flipped),
+      easing: 'ease-in-out',
+    });
+    frames.push({ offset: (start + timing.hop) / total, transform: transform(to, flipped) });
+  }
+  element.animate(frames, { duration: total });
+}
+
 /** A jumped piece flies off: it rises, shrinks and fades, starting `delay` ms from now. */
-function flyOff(element: HTMLElement, square: Square, flipped: boolean, delay: number, from = 1) {
+function flyOff(
+  element: HTMLElement,
+  square: Square,
+  flipped: boolean,
+  timing: Timing,
+  delay: number,
+  from = 1,
+) {
   const at = transform(square, flipped);
   element.animate(
     [
       { transform: `${at} scale(1)`, opacity: from },
       { transform: `${at} translateY(-35%) scale(0.6)`, opacity: 0 },
     ],
-    { delay, duration: VANISH_MS, easing: 'ease-in', fill: 'both' },
+    { delay, duration: timing.vanish, easing: 'ease-in', fill: 'both' },
   );
 }
 
@@ -91,7 +132,7 @@ interface Press {
 
 export function Board(props: BoardProps) {
   const { pieces, captured, lastMove, moveNumber, legalMoves, selection, hint, flipped } = props;
-  const { premove, premoveFrom, premoveTargets, premovable, ghosts } = props;
+  const { premove, premoveFrom, premoveTargets, premovable, ghosts, timing } = props;
   const { t } = useI18n();
   const pieceElements = useRef(new Map<number, HTMLDivElement>());
   const capturedElements = useRef(new Map<number, HTMLDivElement>());
@@ -151,85 +192,72 @@ export function Board(props: BoardProps) {
   useLayoutEffect(() => {
     const previous = previousMoveNumber.current;
     previousMoveNumber.current = moveNumber;
-    if (!lastMove || moveNumber !== previous + 1) return;
+    if (!lastMove || moveNumber !== previous + 1 || !timing.enabled) return;
     const dropped = droppedAt.current === moveNumber;
-    const steps = [lastMove.from, ...lastMove.path];
     const mover = pieces.find((piece) => piece.square === lastMove.to);
     const element = mover ? pieceElements.current.get(mover.id) : undefined;
-    const at = (square: Square) => transform(square, flipped);
 
-    if (lastMove.captures.length === 0) {
-      if (dropped || !canAnimate(element)) return;
-      element.animate(
-        steps.map((square) => ({ transform: at(square) })),
-        { duration: SLIDE_MS * lastMove.path.length, easing: 'ease-in-out' },
-      );
-      return;
-    }
-
-    // Landing squares already chosen, when the player finished this chain on the board.
+    // Landing squares already chosen, when the player finished this move on the board
+    // (all of them when the move waited for confirmation).
     const chosen = previousSelection.current;
     const done =
       chosen !== null &&
       chosen.from === lastMove.from &&
-      chosen.path.length < lastMove.path.length &&
+      chosen.path.length <= lastMove.path.length &&
       chosen.path.every((square, index) => square === lastMove.path[index])
         ? chosen.path.length
         : 0;
-    const beats = lastMove.path.length - done;
+    const steps = [lastMove.from, ...lastMove.path].slice(done);
 
     if (!dropped && canAnimate(element)) {
-      const total = hopStart(beats - 1) + HOP_MS;
-      const frames: Keyframe[] = [];
-      for (let beat = 0; beat < beats; beat++) {
-        const from = steps[done + beat] ?? lastMove.from;
-        const to = steps[done + beat + 1] ?? lastMove.to;
-        frames.push({ offset: hopStart(beat) / total, transform: at(from), easing: 'ease-in-out' });
-        frames.push({ offset: (hopStart(beat) + HOP_MS) / total, transform: at(to) });
-      }
-      element.animate(frames, { duration: total });
+      if (lastMove.captures.length === 0) slide(element, steps, timing, flipped);
+      else hop(element, steps, timing, flipped);
     }
     // The jumped pieces in the order they were captured.
+    const beats = steps.length - 1;
     lastMove.captures.forEach((square, index) => {
       const piece = captured.find((candidate) => candidate.square === square);
       const jumped = piece ? capturedElements.current.get(piece.id) : undefined;
       if (!canAnimate(jumped)) return;
-      const delay = dropped ? 0 : vanishStart(Math.max(0, index - done));
-      flyOff(jumped, square, flipped, delay, index < done ? GHOST_OPACITY : 1);
+      const delay = dropped || beats === 0 ? 0 : timing.vanishStart(Math.max(0, index - done));
+      flyOff(jumped, square, flipped, timing, delay, index < done ? GHOST_OPACITY : 1);
     });
     // Only when a new move is played; flipping the board should not replay it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moveNumber]);
 
-  // A step of a capture chain chosen by clicking hops to the new landing square, then the
-  // jumped piece fades; a step chosen by dropping the piece there needs no animation.
+  // Landing squares chosen by clicking (a capture chain step by step, or a whole move
+  // waiting for confirmation) are played the same way: hop, then the jumped piece fades.
+  // A step chosen by dropping the piece there needs no animation.
   useLayoutEffect(() => {
     const before = previousSelection.current;
     previousSelection.current = selection;
     if (!selection || !before || before.from !== selection.from || !moving) return;
-    if (selection.path.length !== before.path.length + 1 || pending === undefined) return;
+    const added = selection.path.length - before.path.length;
+    if (added < 1 || pending === undefined || !timing.enabled) return;
     if (droppedStep.current === pending) {
       droppedStep.current = null;
       return;
     }
     const element = pieceElements.current.get(moving.id);
-    if (!element || typeof element.animate !== 'function') return;
-    const start = before.path.at(-1) ?? before.from;
-    element.animate(
-      [{ transform: transform(start, flipped) }, { transform: transform(pending, flipped) }],
-      { duration: HOP_MS, easing: 'ease-in-out' },
-    );
-    const jumpedSquare = ghosts.at(-1);
-    const jumped = pieces.find((piece) => piece.square === jumpedSquare);
-    const ghost = jumped ? pieceElements.current.get(jumped.id) : undefined;
-    if (canAnimate(ghost)) {
+    if (!canAnimate(element)) return;
+    const steps = [before.path.at(-1) ?? before.from, ...selection.path.slice(-added)];
+    if (!mustCapture) {
+      slide(element, steps, timing, flipped);
+      return;
+    }
+    hop(element, steps, timing, flipped);
+    ghosts.slice(-added).forEach((square, index) => {
+      const jumped = pieces.find((piece) => piece.square === square);
+      const ghost = jumped ? pieceElements.current.get(jumped.id) : undefined;
+      if (!canAnimate(ghost)) return;
       ghost.animate([{ opacity: 1 }, { opacity: GHOST_OPACITY }], {
-        delay: HOP_MS,
-        duration: VANISH_MS,
+        delay: timing.vanishStart(index),
+        duration: timing.vanish,
         easing: 'ease-in',
         fill: 'backwards',
       });
-    }
+    });
     // Only when the chain advances.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selection]);
