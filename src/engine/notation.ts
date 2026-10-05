@@ -48,6 +48,14 @@ export function moveToTudafNotation(move: Move, legalMoves: readonly Move[]): st
  * Finds the legal move matching `notation`. Accepts the full notation, or just the
  * start and end squares (`h1xf7`, `h1-f7`) when that is unambiguous.
  */
+/** Thrown by `findMove` when only the start and end squares were given and several moves fit. */
+export class AmbiguousMoveError extends Error {
+  constructor(notation: string) {
+    super(`Ambiguous move "${notation}"`);
+    this.name = 'AmbiguousMoveError';
+  }
+}
+
 export function findMove(moves: readonly Move[], notation: string): Move {
   const wanted = notation.trim().toLowerCase();
   const exact = moves.find((move) => moveToNotation(move) === wanted);
@@ -59,7 +67,7 @@ export function findMove(moves: readonly Move[], notation: string): Move {
     const to = parseSquare(squares[1]);
     const matches = moves.filter((move) => move.from === from && move.to === to);
     if (matches.length === 1 && matches[0]) return matches[0];
-    if (matches.length > 1) throw new Error(`Ambiguous move "${notation}"`);
+    if (matches.length > 1) throw new AmbiguousMoveError(notation);
   }
   throw new Error(`Illegal move "${notation}"`);
 }

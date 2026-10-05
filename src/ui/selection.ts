@@ -12,7 +12,12 @@ export interface Selection {
 }
 
 export type ClickResult =
-  | { readonly type: 'select'; readonly selection: Selection | null }
+  | {
+      readonly type: 'select';
+      readonly selection: Selection | null;
+      /** The square ends several capture chains: the player must pick the landing squares. */
+      readonly ambiguous?: boolean;
+    }
   | { readonly type: 'play'; readonly move: Move };
 
 /** Moves still possible for the current selection. */
@@ -87,7 +92,34 @@ export function click(
     return { type: 'select', selection: { from: selection.from, path } };
   }
 
+  // Several chains end on this square. Go as far along them as they agree, then let the
+  // player choose the rest of the way one landing square at a time.
+  if (reaching.length > 1) {
+    const shared = sharedLandings(reaching, step);
+    return {
+      type: 'select',
+      selection:
+        shared.length > 0
+          ? { from: selection.from, path: [...selection.path, ...shared] }
+          : selection,
+      ambiguous: true,
+    };
+  }
+
   return reselect();
+}
+
+/** The landing squares, from index `step` on, that every one of `moves` passes through. */
+function sharedLandings(moves: readonly Move[], step: number): Square[] {
+  const [first, ...rest] = moves;
+  if (!first) return [];
+  const shared: Square[] = [];
+  for (let i = step; i < first.path.length - 1; i++) {
+    const square = first.path[i];
+    if (square === undefined || rest.some((move) => move.path[i] !== square)) break;
+    shared.push(square);
+  }
+  return shared;
 }
 
 /**

@@ -99,7 +99,10 @@ function hop(element: HTMLElement, steps: readonly Square[], timing: Timing, fli
   element.animate(frames, { duration: total });
 }
 
-/** A jumped piece flies off: it rises, shrinks and fades, starting `delay` ms from now. */
+/**
+ * A jumped piece flies off: it rises, shrinks and fades, starting `delay` ms from now. With
+ * reduced motion it only fades.
+ */
 function flyOff(
   element: HTMLElement,
   square: Square,
@@ -109,10 +112,11 @@ function flyOff(
   from = 1,
 ) {
   const at = transform(square, flipped);
+  const away = timing.calm ? `${at} scale(1)` : `${at} translateY(-35%) scale(0.6)`;
   element.animate(
     [
       { transform: `${at} scale(1)`, opacity: from },
-      { transform: `${at} translateY(-35%) scale(0.6)`, opacity: 0 },
+      { transform: away, opacity: 0 },
     ],
     { delay, duration: timing.vanish, easing: 'ease-in', fill: 'both' },
   );
@@ -185,8 +189,8 @@ export function Board(props: BoardProps) {
   // Loading a saved game, taking back or starting over changes the position without a move.
   // A capture plays beat by beat: hop to a landing square, then the jumped piece flies off.
   // Steps the player already chose on the board are not replayed (their pieces were faded
-  // then, and fly off with the first remaining beat), and a piece dropped on its final
-  // square stays there while every jumped piece flies off at once.
+  // then, and fly off with the first remaining beat), and a piece dropped one hop away
+  // stays there while the jumped piece flies off.
   const previousMoveNumber = useRef(moveNumber);
   const previousSelection = useRef(selection);
   useLayoutEffect(() => {
@@ -208,18 +212,21 @@ export function Board(props: BoardProps) {
         ? chosen.path.length
         : 0;
     const steps = [lastMove.from, ...lastMove.path].slice(done);
+    const beats = steps.length - 1;
+    // A piece dropped one hop away is already where it belongs. Dropped on the end of a
+    // longer chain, it still hops through every landing square so the capture can be followed.
+    const still = dropped && beats <= 1;
 
-    if (!dropped && canAnimate(element)) {
+    if (!still && canAnimate(element)) {
       if (lastMove.captures.length === 0) slide(element, steps, timing, flipped);
       else hop(element, steps, timing, flipped);
     }
     // The jumped pieces in the order they were captured.
-    const beats = steps.length - 1;
     lastMove.captures.forEach((square, index) => {
       const piece = captured.find((candidate) => candidate.square === square);
       const jumped = piece ? capturedElements.current.get(piece.id) : undefined;
       if (!canAnimate(jumped)) return;
-      const delay = dropped || beats === 0 ? 0 : timing.vanishStart(Math.max(0, index - done));
+      const delay = still || beats === 0 ? 0 : timing.vanishStart(Math.max(0, index - done));
       flyOff(jumped, square, flipped, timing, delay, index < done ? GHOST_OPACITY : 1);
     });
     // Only when a new move is played; flipping the board should not replay it.
@@ -228,17 +235,16 @@ export function Board(props: BoardProps) {
 
   // Landing squares chosen by clicking (a capture chain step by step, or a whole move
   // waiting for confirmation) are played the same way: hop, then the jumped piece fades.
-  // A step chosen by dropping the piece there needs no animation.
+  // A single step chosen by dropping the piece there needs no animation.
   useLayoutEffect(() => {
     const before = previousSelection.current;
     previousSelection.current = selection;
     if (!selection || !before || before.from !== selection.from || !moving) return;
     const added = selection.path.length - before.path.length;
     if (added < 1 || pending === undefined || !timing.enabled) return;
-    if (droppedStep.current === pending) {
-      droppedStep.current = null;
-      return;
-    }
+    const droppedHere = droppedStep.current === pending;
+    droppedStep.current = null;
+    if (droppedHere && added === 1) return;
     const element = pieceElements.current.get(moving.id);
     if (!canAnimate(element)) return;
     const steps = [before.path.at(-1) ?? before.from, ...selection.path.slice(-added)];
