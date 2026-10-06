@@ -5,7 +5,7 @@ import type { Timing } from '../animation';
 import { AnalysisSession } from '../analysis-session';
 import { formatEvaluation } from '../evaluation';
 import { useI18n } from '../i18n';
-import { navigate, routeLink } from '../route';
+import { navigate, routeHash, routeLink } from '../route';
 import { Board } from './Board';
 import { EvalBar } from './EvalBar';
 
@@ -342,6 +342,9 @@ export function AnalysisView({
           )}
         </section>
 
+        <a className="back-link" href={routeHash({ page: 'editor', fen: board.fen })}>
+          {t('editPosition')}
+        </a>
         <a className="back-link" href="#/">
           {t('backToPlay')}
         </a>

@@ -14,6 +14,7 @@ import { I18nContext, LANGUAGES, detectLanguage, translator } from './i18n';
 import { timing } from './animation';
 import { describeEvent } from './announce';
 import { AnalysisView } from './components/AnalysisView';
+import { EditorView } from './components/EditorView';
 import { parseRoute, useHash } from './route';
 import type { Preferences } from './preferences';
 import { animationScale, applyPreferences, loadPreferences, savePreferences } from './preferences';
@@ -200,6 +201,9 @@ export function App({
             <a href="#/analysis" aria-current={page === 'analysis' ? 'page' : undefined}>
               {t('pageAnalysis')}
             </a>
+            <a href="#/editor" aria-current={page === 'editor' ? 'page' : undefined}>
+              {t('pageEditor')}
+            </a>
           </nav>
           <div className="header-tools">
             <button
@@ -260,7 +264,9 @@ export function App({
           )}
         </div>
 
-        {route.page === 'analysis' ? (
+        {route.page === 'editor' ? (
+          <EditorView key={hash} fen={route.fen} />
+        ) : route.page === 'analysis' ? (
           // A new link (another position or game) opens a fresh board.
           <AnalysisView
             key={hash}
