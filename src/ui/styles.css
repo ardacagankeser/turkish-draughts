@@ -1578,3 +1578,63 @@ kbd {
 .editor-problems {
   color: var(--danger);
 }
+
+/* Tablebase panel -------------------------------------------------------------- */
+.tablebase {
+  padding: 12px 14px;
+}
+
+.tablebase h2 {
+  margin: 0 0 6px;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.tablebase-summary {
+  margin: 0 0 8px;
+  font-weight: 600;
+}
+
+.tablebase ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.tb-move {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 0.9rem;
+  text-align: left;
+}
+
+.tb-move:hover {
+  background: var(--surface-2);
+}
+
+.tb-notation {
+  font-family: var(--mono);
+}
+
+.tb-move.win .tb-result {
+  color: var(--only);
+  font-weight: 600;
+}
+
+.tb-move.loss .tb-result {
+  color: var(--blunder);
+}
+
+.tb-move.draw .tb-result,
+.tb-move.unknown .tb-result {
+  color: var(--text-muted);
+}

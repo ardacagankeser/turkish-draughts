@@ -1,5 +1,8 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import type { AnalysisClient } from '../../ai';
+import { loadTablebase as fetchTablebase } from '../../ai';
+import type { Probe } from '../tablebase-view';
+import { TablebasePanel } from './TablebasePanel';
 import { Game, INITIAL_FEN, parsePdn, toPdn } from '../../engine';
 import type { Timing } from '../animation';
 import { AnalysisSession } from '../analysis-session';
@@ -31,20 +34,29 @@ export function AnalysisView({
   ply,
   createAnalysis,
   timing,
+  loadTablebase = fetchTablebase,
 }: {
   fen: string;
   moves: readonly string[];
   ply: number | null;
   createAnalysis: () => AnalysisClient;
   timing: Timing;
+  /** Loads the endgame tablebase; tests pass a fake. */
+  loadTablebase?: () => Promise<Probe | null>;
 }) {
   const { t } = useI18n();
   // A link with a bad position or move opens the standard position instead.
   const [{ session, invalid }] = useState(() => {
     try {
-      return { session: new AnalysisSession(createAnalysis(), fen, moves, ply), invalid: false };
+      return {
+        session: new AnalysisSession(createAnalysis(), fen, moves, ply, loadTablebase),
+        invalid: false,
+      };
     } catch {
-      return { session: new AnalysisSession(createAnalysis(), INITIAL_FEN, []), invalid: true };
+      return {
+        session: new AnalysisSession(createAnalysis(), INITIAL_FEN, [], null, loadTablebase),
+        invalid: true,
+      };
     }
   });
   const board = useSyncExternalStore(session.subscribe, session.getSnapshot);
@@ -163,6 +175,8 @@ export function AnalysisView({
             )}
           </p>
         )}
+
+        {board.tablebase && <TablebasePanel panel={board.tablebase} onMove={session.playMove} />}
 
         <section className="moves">
           <h2>{t('moves')}</h2>
