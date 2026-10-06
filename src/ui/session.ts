@@ -597,6 +597,9 @@ export class GameSession {
     this.#emit();
   };
 
+  /** The moves of the game in landing notation, for the analysis board. */
+  readonly landingMoves = (): string[] => this.#moves();
+
   /** Clears a queued premove and a premove being picked. */
   readonly cancelPremove = (): void => {
     if (this.#premove === null && this.#premoveFrom === null) return;

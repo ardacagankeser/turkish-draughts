@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Color } from '../../engine';
+import { INITIAL_FEN } from '../../engine';
+import { routeHash } from '../route';
 import { formatEvaluation } from '../evaluation';
 import { revealWithin } from '../scroll';
 import type { GameSession, Practice, Snapshot } from '../session';
@@ -339,6 +341,19 @@ export function Panel({ game, session, onNewGame }: PanelProps) {
             ⏭
           </button>
         </div>
+        {(over || hotseat) && game.moveList.length > 0 && (
+          <a
+            className="open-analysis"
+            href={routeHash({
+              page: 'analysis',
+              fen: INITIAL_FEN,
+              moves: session.landingMoves(),
+              ply: game.moveNumber,
+            })}
+          >
+            {t('openInAnalysis')}
+          </a>
+        )}
         {game.browsing && (
           <button type="button" className="primary back-to-game" onClick={session.showLive}>
             {t('backToGame')}

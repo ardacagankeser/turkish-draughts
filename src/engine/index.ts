@@ -11,3 +11,5 @@ export {
   squareName,
 } from './notation';
 export * from './types';
+export { PDN_GAME_TYPE, parsePdn, pdnResult, toPdn } from './pdn';
+export type { PdnGame } from './pdn';
