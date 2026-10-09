@@ -7,7 +7,8 @@ import { INITIAL_FEN } from '../engine';
  *
  * - `#/` plays a game,
  * - `#/analysis?fen=…&moves=c3-c4,f6-f5&ply=1` is the analysis board,
- * - `#/editor?fen=…` is the position editor.
+ * - `#/editor?fen=…` is the position editor,
+ * - `#/archive` lists finished games.
  */
 export type Route =
   | { readonly page: 'play' }
@@ -18,7 +19,8 @@ export type Route =
       /** The position to show first; the end of the moves when missing. */
       readonly ply: number | null;
     }
-  | { readonly page: 'editor'; readonly fen: string };
+  | { readonly page: 'editor'; readonly fen: string }
+  | { readonly page: 'archive' };
 
 export function parseRoute(hash: string): Route {
   const [path = '', query = ''] = hash.replace(/^#/, '').split('?');
@@ -35,12 +37,14 @@ export function parseRoute(hash: string): Route {
     };
   }
   if (path === '/editor') return { page: 'editor', fen };
+  if (path === '/archive') return { page: 'archive' };
   return { page: 'play' };
 }
 
 /** The hash for a route; the standard position and empty values are left out. */
 export function routeHash(route: Route): string {
   if (route.page === 'play') return '#/';
+  if (route.page === 'archive') return '#/archive';
   const params = new URLSearchParams();
   if (route.fen !== INITIAL_FEN) params.set('fen', route.fen);
   if (route.page === 'analysis') {

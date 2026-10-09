@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseSquare } from '../engine';
 import type { ReviewPosition, ReviewUpdate, ReviewWorkerLike } from '../ai';
 import { ReviewClient } from '../ai';
+import { GameArchive, MemoryStore } from './archive';
 import { MemoryStorage, fakeAi, fakeAnalysis, fakeReview } from '../test/fakes';
 import type { Snapshot } from './session';
 import { GameSession } from './session';
@@ -754,6 +755,54 @@ describe('GameSession', () => {
       expect(session.getSnapshot().moveNumber).toBe(2);
       session.stop();
     });
+  });
+
+  it('archives a game once, when it ends', async () => {
+    const archive = new GameArchive(new MemoryStore());
+    const { session, storage } = started();
+    session.setArchive(archive);
+    session.clickSquare(sq('c3'));
+    session.clickSquare(sq('c4'));
+    await until(session, (s) => s.moveList.length === 2);
+    session.resign();
+    expect(archive.getSnapshot()).toHaveLength(1);
+    expect(archive.getSnapshot()[0]).toMatchObject({
+      moves: ['c3-c4', expect.any(String)],
+      result: { winner: -1, reason: 'resignation' },
+      opponent: 'computer',
+      human: 1,
+      level: 'medium',
+    });
+    expect(archive.getSnapshot()[0]?.durationMs).not.toBeNull();
+    session.stop();
+    // Reloading the finished game does not archive it again.
+    const reloaded = new GameSession(fakeAi(), storage, fakeAnalysis());
+    reloaded.setArchive(archive);
+    reloaded.start();
+    expect(archive.getSnapshot()).toHaveLength(1);
+    reloaded.stop();
+  });
+
+  it('opens an archived game as the finished game on the board', () => {
+    const { session } = started();
+    session.openArchived({
+      id: 'x',
+      endedAt: 1,
+      durationMs: null,
+      moves: ['c3-c4', 'f6-f5'],
+      result: { winner: 1, reason: 'resignation' },
+      opponent: 'computer',
+      human: -1,
+      level: 'hard',
+      clock: null,
+    });
+    const snapshot = session.getSnapshot();
+    expect(snapshot.moveList).toEqual(['c3-c4', 'f6-f5']);
+    expect(snapshot.result).toEqual({ winner: 1, reason: 'resignation' });
+    expect(snapshot.settings).toMatchObject({ human: -1, level: 'hard' });
+    expect(snapshot.flipped).toBe(true);
+    expect(snapshot.clock).toBeNull();
+    session.stop();
   });
 
   it('reviews only finished games', () => {

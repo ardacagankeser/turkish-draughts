@@ -15,6 +15,8 @@ import {
 import type { AiClient, Level } from '../ai';
 import type { ReviewPosition } from '../ai';
 import { AnalysisClient, LEVEL_OPTIONS, MATE, ReviewClient, winningChances } from '../ai';
+import type { ArchivedGame } from './archive';
+import { newGameId } from './archive';
 import type { ReviewedMove, SideSummary } from './review';
 import { INACCURACY, judgeMoves, summarise } from './review';
 import type { ClockView } from './clock';
@@ -225,6 +227,10 @@ export class GameSession {
   #showEvaluation: boolean;
   #flipped: boolean;
   #resultId = 0;
+  /** When the game began (wall-clock time), for its duration in the archive. */
+  #startedAt: number | null;
+  /** Where finished games are kept; set by the app. */
+  #archive: { add(game: ArchivedGame): Promise<void> } | null = null;
   readonly #now: () => number;
   /** When the board will have finished animating the move it shows (see `boardSettles`). */
   #settledAt = 0;
@@ -274,16 +280,9 @@ export class GameSession {
       this.#game = new Game();
     }
     // Endings that the moves alone do not reproduce.
-    const ending = saved.ending;
-    if (ending && !this.#game.isOver) {
-      if (ending.reason === 'agreement') this.#game.agreeDraw();
-      else if (ending.winner !== null) {
-        const loser = opponent(ending.winner);
-        if (ending.reason === 'resignation') this.#game.resign(loser);
-        else this.#game.timeout(loser);
-      }
-    }
+    if (saved.ending) restoreEnding(this.#game, saved.ending);
     this.#settings = saved.settings;
+    this.#startedAt = saved.startedAt;
     const control = saved.settings?.clock;
     if (control) this.#clock = new Clock(control, now, saved.clock ?? undefined);
     this.#drawOffers = saved.drawOffers;
@@ -334,6 +333,45 @@ export class GameSession {
    */
   readonly boardSettles = (ms: number): void => {
     this.#settledAt = this.#now() + ms;
+  };
+
+  /** Where finished games are kept from now on. */
+  readonly setArchive = (archive: { add(game: ArchivedGame): Promise<void> } | null): void => {
+    this.#archive = archive;
+  };
+
+  /**
+   * Shows an archived game as the current, finished game (for its review). It replaces the
+   * game on the board, so the app asks first if one is in progress.
+   */
+  readonly openArchived = (archived: ArchivedGame): void => {
+    let game: Game;
+    try {
+      game = new Game();
+      for (const move of archived.moves) game.play(move);
+      restoreEnding(game, archived.result);
+    } catch {
+      return;
+    }
+    if (!game.isOver) return;
+    this.#cancelAi();
+    this.#stopReview();
+    this.#game = game;
+    this.#settings = {
+      human: archived.human,
+      level: archived.level,
+      clock: archived.clock,
+      ...(archived.opponent === 'human' ? { opponent: 'human' as const } : {}),
+    };
+    // The game is over: no clock runs, and it is not archived a second time.
+    this.#clock = null;
+    this.#startedAt = null;
+    this.#drawOffers = 0;
+    this.#evaluation = null;
+    this.#flipped = archived.human === -1;
+    this.#setNotice(null);
+    this.#resultId++;
+    this.#reset();
   };
 
   /** Pauses the clocks while the page is hidden, as players expect against the computer. */
@@ -392,6 +430,7 @@ export class GameSession {
     this.#stopReview();
     this.#game = new Game();
     this.#clock = settings.clock ? new Clock(settings.clock, this.#now) : null;
+    this.#startedAt = Date.now();
     this.#drawOffers = 0;
     this.#evaluation = null;
     // Two players see no evaluation by default; it comes back for the next computer game.
@@ -483,7 +522,7 @@ export class GameSession {
         if (accepted) {
           this.#game.agreeDraw();
           this.#clock?.stop();
-          this.#resultId++;
+          this.#finished();
           if (this.#game.result)
             this.#event = { id: ++this.#eventId, kind: 'end', result: this.#game.result };
           this.#refreshEvaluation();
@@ -509,7 +548,7 @@ export class GameSession {
   readonly #endNow = (): void => {
     this.#clock?.stop();
     this.#selection = null;
-    this.#resultId++;
+    this.#finished();
     if (this.#game.result)
       this.#event = { id: ++this.#eventId, kind: 'end', result: this.#game.result };
     this.#refreshEvaluation();
@@ -850,7 +889,7 @@ export class GameSession {
         (nextMoves[0]?.captures.length ?? 0) > 0,
       result: this.#game.result,
     };
-    if (this.#game.isOver) this.#resultId++;
+    if (this.#game.isOver) this.#finished();
     // While browsing, the shown position (and its analysis) stays; the move is counted.
     if (this.#view) this.#missedMoves++;
     else this.#refreshEvaluation();
@@ -962,6 +1001,26 @@ export class GameSession {
       });
   }
 
+  /** The game has just ended: a new result to show, and a game for the archive. */
+  #finished(): void {
+    this.#resultId++;
+    const result = this.#game.result;
+    const settings = this.#settings;
+    if (!result || !settings || !this.#archive) return;
+    const endedAt = Date.now();
+    void this.#archive.add({
+      id: newGameId(),
+      endedAt,
+      durationMs: this.#startedAt === null ? null : Math.max(0, endedAt - this.#startedAt),
+      moves: this.#moves(),
+      result,
+      opponent: settings.opponent === 'human' ? 'human' : 'computer',
+      human: settings.human,
+      level: settings.level,
+      clock: settings.clock ?? null,
+    });
+  }
+
   /** The side to move has run out of time: it loses, whatever the position (TÜDAF 1g). */
   #timeOut(): void {
     const loser = this.#clock?.flagged();
@@ -972,7 +1031,7 @@ export class GameSession {
     this.#premoveFrom = null;
     this.#game.timeout(loser);
     this.#clock.stop();
-    this.#resultId++;
+    this.#finished();
     if (this.#game.result) {
       this.#event = { id: ++this.#eventId, kind: 'end', result: this.#game.result };
     }
@@ -1230,6 +1289,7 @@ export class GameSession {
         clock: this.#clock
           ? { white: this.#clock.remaining(1), black: this.#clock.remaining(-1) }
           : null,
+        startedAt: this.#startedAt,
       },
       this.#storage,
     );
@@ -1317,5 +1377,19 @@ export class GameSession {
       bestMove: this.#bestMove(),
       practice: this.#practiceSnapshot(),
     };
+  }
+}
+
+/** Replays an ending the moves alone do not reproduce: a resignation, a draw or a lost clock. */
+function restoreEnding(
+  game: Game,
+  ending: { readonly reason: string; readonly winner: Color | null },
+): void {
+  if (game.isOver) return;
+  if (ending.reason === 'agreement') game.agreeDraw();
+  else if (ending.winner !== null) {
+    const loser = opponent(ending.winner);
+    if (ending.reason === 'resignation') game.resign(loser);
+    else if (ending.reason === 'timeout') game.timeout(loser);
   }
 }
