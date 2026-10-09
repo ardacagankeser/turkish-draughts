@@ -8,7 +8,8 @@ import { INITIAL_FEN } from '../engine';
  * - `#/` plays a game,
  * - `#/analysis?fen=…&moves=c3-c4,f6-f5&ply=1` is the analysis board,
  * - `#/editor?fen=…` is the position editor,
- * - `#/archive` lists finished games.
+ * - `#/archive` lists finished games,
+ * - `#/learn` teaches the rules.
  */
 export type Route =
   | { readonly page: 'play' }
@@ -20,7 +21,8 @@ export type Route =
       readonly ply: number | null;
     }
   | { readonly page: 'editor'; readonly fen: string }
-  | { readonly page: 'archive' };
+  | { readonly page: 'archive' }
+  | { readonly page: 'learn' };
 
 export function parseRoute(hash: string): Route {
   const [path = '', query = ''] = hash.replace(/^#/, '').split('?');
@@ -38,6 +40,7 @@ export function parseRoute(hash: string): Route {
   }
   if (path === '/editor') return { page: 'editor', fen };
   if (path === '/archive') return { page: 'archive' };
+  if (path === '/learn') return { page: 'learn' };
   return { page: 'play' };
 }
 
@@ -45,6 +48,7 @@ export function parseRoute(hash: string): Route {
 export function routeHash(route: Route): string {
   if (route.page === 'play') return '#/';
   if (route.page === 'archive') return '#/archive';
+  if (route.page === 'learn') return '#/learn';
   const params = new URLSearchParams();
   if (route.fen !== INITIAL_FEN) params.set('fen', route.fen);
   if (route.page === 'analysis') {

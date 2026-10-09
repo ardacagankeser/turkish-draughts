@@ -16,6 +16,7 @@ import { describeEvent } from './announce';
 import { AnalysisView } from './components/AnalysisView';
 import { EditorView } from './components/EditorView';
 import { ArchiveView } from './components/ArchiveView';
+import { LearnView } from './components/LearnView';
 import { GameArchive, defaultStore } from './archive';
 import { parseRoute, useHash } from './route';
 import type { Preferences } from './preferences';
@@ -220,6 +221,9 @@ export function App({
             <a href="#/archive" aria-current={page === 'archive' ? 'page' : undefined}>
               {t('pageArchive')}
             </a>
+            <a href="#/learn" aria-current={page === 'learn' ? 'page' : undefined}>
+              {t('pageLearn')}
+            </a>
           </nav>
           <div className="header-tools">
             <button
@@ -280,7 +284,9 @@ export function App({
           )}
         </div>
 
-        {route.page === 'archive' ? (
+        {route.page === 'learn' ? (
+          <LearnView storage={storage} timing={boardTiming} />
+        ) : route.page === 'archive' ? (
           <ArchiveView
             archive={archive}
             gameInProgress={

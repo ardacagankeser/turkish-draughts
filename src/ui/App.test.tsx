@@ -472,6 +472,19 @@ describe('App', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
+  it('teaches the rules step by step on the Learn page', async () => {
+    window.location.hash = '#/learn';
+    const { user } = renderApp();
+    expect(screen.getByRole('link', { name: 'Learn' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('status')).toHaveTextContent('one square forward');
+    await user.click(screen.getByRole('gridcell', { name: 'd3, white man' }));
+    await user.click(screen.getByRole('gridcell', { name: 'd4' }));
+    expect(screen.getByRole('status')).toHaveTextContent('Well done!');
+    expect(screen.getByRole('button', { name: 'Exercise 1, solved' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.getByRole('status')).toHaveTextContent('to the side');
+  });
+
   it('switches language', async () => {
     const { user } = renderApp();
     await user.click(screen.getByRole('button', { name: 'TR' }));

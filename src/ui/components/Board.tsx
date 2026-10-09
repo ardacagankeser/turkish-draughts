@@ -45,6 +45,8 @@ interface BoardProps {
    * not animated), so the game can wait for the board to be still before the next move.
    */
   readonly onSettle?: (ms: number) => void;
+  /** Hide where pieces can go and which must capture (exercises that ask for exactly that). */
+  readonly hideTargets?: boolean;
 }
 
 /** Board position of a square in display coordinates (0,0 is the top left corner). */
@@ -515,7 +517,11 @@ export function Board(props: BoardProps) {
   };
 
   return (
-    <div className={`board${keyboard ? ' keyboard' : ''}`} role="grid" aria-label={t('board')}>
+    <div
+      className={`board${keyboard ? ' keyboard' : ''}${props.hideTargets ? ' no-targets' : ''}`}
+      role="grid"
+      aria-label={t('board')}
+    >
       <div
         ref={squaresElement}
         className="squares"
