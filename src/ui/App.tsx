@@ -297,6 +297,7 @@ export function App({
                   timing={boardTiming}
                   onSquare={session.clickSquare}
                   onCancelPremove={session.cancelPremove}
+                  onSettle={session.boardSettles}
                 />
                 {game.notice && (
                   <div className={`notice ${game.notice}`} role="status">

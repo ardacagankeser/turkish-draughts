@@ -50,6 +50,26 @@ describe('clock', () => {
     expect(clock.remaining(-1)).toBe(58_000);
   });
 
+  it("holds a decided move: nobody's time runs until it is shown", () => {
+    const { clock, advance } = manualClock();
+    clock.moved(1);
+    advance(2000);
+    clock.hold(-1);
+    expect(clock.running).toBeNull();
+    expect(clock.held).toBe(-1);
+    advance(5000);
+    expect(clock.remaining(-1)).toBe(58_000);
+    expect(clock.remaining(1)).toBe(60_000);
+    // Shown: the held side still gets its increment, and the other side's time starts.
+    clock.moved(-1);
+    expect(clock.remaining(-1)).toBe(60_000);
+    expect(clock.running).toBe(1);
+    expect(clock.held).toBeNull();
+    // Holding a side whose time is not running does nothing.
+    clock.hold(-1);
+    expect(clock.running).toBe(1);
+  });
+
   it('reports the side that ran out of time', () => {
     const { clock, advance } = manualClock();
     clock.moved(1);

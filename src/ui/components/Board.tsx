@@ -40,6 +40,11 @@ interface BoardProps {
   readonly timing: Timing;
   readonly onSquare: (square: Square) => void;
   readonly onCancelPremove: () => void;
+  /**
+   * Told how many milliseconds the animation of each newly shown move lasts (0 when it is
+   * not animated), so the game can wait for the board to be still before the next move.
+   */
+  readonly onSettle?: (ms: number) => void;
 }
 
 /** Board position of a square in display coordinates (0,0 is the top left corner). */
@@ -68,22 +73,34 @@ const transform = (square: Square, flipped: boolean) => {
 const canAnimate = (element: HTMLElement | undefined): element is HTMLElement =>
   element !== undefined && typeof element.animate === 'function';
 
-/** A quiet move slides along its squares in one go. */
-function slide(element: HTMLElement, steps: readonly Square[], timing: Timing, flipped: boolean) {
-  if (steps.length < 2) return;
+/** A quiet move slides along its squares in one go. Returns how long it takes. */
+function slide(
+  element: HTMLElement,
+  steps: readonly Square[],
+  timing: Timing,
+  flipped: boolean,
+): number {
+  if (steps.length < 2) return 0;
+  const duration = timing.slide * (steps.length - 1);
   element.animate(
     steps.map((square) => ({ transform: transform(square, flipped) })),
-    { duration: timing.slide * (steps.length - 1), easing: 'ease-in-out' },
+    { duration, easing: 'ease-in-out' },
   );
+  return duration;
 }
 
 /**
  * A capture hops from landing square to landing square, pausing on each while the jumped
  * piece flies off.
  */
-function hop(element: HTMLElement, steps: readonly Square[], timing: Timing, flipped: boolean) {
+function hop(
+  element: HTMLElement,
+  steps: readonly Square[],
+  timing: Timing,
+  flipped: boolean,
+): number {
   const beats = steps.length - 1;
-  if (beats < 1) return;
+  if (beats < 1) return 0;
   const total = timing.hopStart(beats - 1) + timing.hop;
   const frames: Keyframe[] = [];
   for (let beat = 0; beat < beats; beat++) {
@@ -98,11 +115,12 @@ function hop(element: HTMLElement, steps: readonly Square[], timing: Timing, fli
     frames.push({ offset: (start + timing.hop) / total, transform: transform(to, flipped) });
   }
   element.animate(frames, { duration: total });
+  return total;
 }
 
 /**
  * A jumped piece flies off: it rises, shrinks and fades, starting `delay` ms from now. With
- * reduced motion it only fades.
+ * reduced motion it only fades. Returns when it is gone.
  */
 function flyOff(
   element: HTMLElement,
@@ -111,7 +129,7 @@ function flyOff(
   timing: Timing,
   delay: number,
   from = 1,
-) {
+): number {
   const at = transform(square, flipped);
   const away = timing.calm ? `${at} scale(1)` : `${at} translateY(-35%) scale(0.6)`;
   element.animate(
@@ -121,6 +139,16 @@ function flyOff(
     ],
     { delay, duration: timing.vanish, easing: 'ease-in', fill: 'both' },
   );
+  return delay + timing.vanish;
+}
+
+/**
+ * Brings every animation still running on the board to its end, so a new move never plays
+ * over an old one (a fast reply, quick browsing, two players moving quickly).
+ */
+function finishRunning(container: HTMLElement | null): void {
+  if (!container || typeof container.getAnimations !== 'function') return;
+  for (const animation of container.getAnimations({ subtree: true })) animation.finish();
 }
 
 interface Press {
@@ -143,6 +171,7 @@ export function Board(props: BoardProps) {
   const capturedElements = useRef(new Map<number, HTMLDivElement>());
   const squareElements = useRef(new Map<Square, HTMLButtonElement>());
   const squaresElement = useRef<HTMLDivElement>(null);
+  const piecesElement = useRef<HTMLDivElement>(null);
   const press = useRef<Press | null>(null);
   const drawingFrom = useRef<Square | null>(null);
   /** The move number reached by a drop, and the chain step reached by a drop. */
@@ -197,7 +226,12 @@ export function Board(props: BoardProps) {
   useLayoutEffect(() => {
     const previous = previousMoveNumber.current;
     previousMoveNumber.current = moveNumber;
-    if (!lastMove || moveNumber !== previous + 1 || !timing.enabled) return;
+    if (moveNumber === previous) return;
+    finishRunning(piecesElement.current);
+    if (!lastMove || moveNumber !== previous + 1 || !timing.enabled) {
+      props.onSettle?.(0);
+      return;
+    }
     const dropped = droppedAt.current === moveNumber;
     const mover = pieces.find((piece) => piece.square === lastMove.to);
     const element = mover ? pieceElements.current.get(mover.id) : undefined;
@@ -218,9 +252,12 @@ export function Board(props: BoardProps) {
     // longer chain, it still hops through every landing square so the capture can be followed.
     const still = dropped && beats <= 1;
 
+    let longest = 0;
     if (!still && canAnimate(element)) {
-      if (lastMove.captures.length === 0) slide(element, steps, timing, flipped);
-      else hop(element, steps, timing, flipped);
+      longest =
+        lastMove.captures.length === 0
+          ? slide(element, steps, timing, flipped)
+          : hop(element, steps, timing, flipped);
     }
     // The jumped pieces in the order they were captured.
     lastMove.captures.forEach((square, index) => {
@@ -228,8 +265,10 @@ export function Board(props: BoardProps) {
       const jumped = piece ? capturedElements.current.get(piece.id) : undefined;
       if (!canAnimate(jumped)) return;
       const delay = still || beats === 0 ? 0 : timing.vanishStart(Math.max(0, index - done));
-      flyOff(jumped, square, flipped, timing, delay, index < done ? GHOST_OPACITY : 1);
+      const gone = flyOff(jumped, square, flipped, timing, delay, index < done ? GHOST_OPACITY : 1);
+      longest = Math.max(longest, gone);
     });
+    props.onSettle?.(longest);
     // Only when a new move is played; flipping the board should not replay it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moveNumber]);
@@ -248,6 +287,7 @@ export function Board(props: BoardProps) {
     if (droppedHere && added === 1) return;
     const element = pieceElements.current.get(moving.id);
     if (!canAnimate(element)) return;
+    finishRunning(piecesElement.current);
     const steps = [before.path.at(-1) ?? before.from, ...selection.path.slice(-added)];
     if (!mustCapture) {
       slide(element, steps, timing, flipped);
@@ -489,7 +529,7 @@ export function Board(props: BoardProps) {
       >
         {squares}
       </div>
-      <div className="pieces" aria-hidden="true">
+      <div className="pieces" aria-hidden="true" ref={piecesElement}>
         {captured.map((piece) => (
           <div
             key={`captured-${piece.id}-${moveNumber}`}
