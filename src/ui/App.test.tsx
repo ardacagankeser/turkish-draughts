@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryStorage, fakeAi, fakeAnalysis, fakeReview } from '../test/fakes';
 import { HOP_MS, NORMAL_TIMING } from './animation';
+import { GameArchive, MemoryStore } from './archive';
 import { App } from './App';
 import { MESSAGES, detectLanguage, translator } from './i18n';
 
@@ -423,6 +424,52 @@ describe('App', () => {
     );
     await user.click(screen.getByRole('button', { name: 'Analyse' }));
     expect(window.location.hash).toBe('#/analysis?fen=B:Wc3:BKf6,Kh6');
+  });
+
+  it('lists finished games with statistics, and reviews one on the play page', async () => {
+    const archive = new GameArchive(new MemoryStore());
+    await archive.add({
+      id: 'game-1',
+      endedAt: Date.UTC(2026, 9, 1, 12),
+      durationMs: 125_000,
+      moves: ['c3-c4', 'f6-f5'],
+      result: { winner: 1, reason: 'resignation' },
+      opponent: 'computer',
+      human: 1,
+      level: 'easy',
+      clock: null,
+    });
+    window.location.hash = '#/archive';
+    const storage = new MemoryStorage();
+    storage.setItem('turkish-draughts:language', 'en');
+    render(
+      <App
+        createAi={fakeAi}
+        createAnalysis={fakeAnalysis}
+        createReview={fakeReview}
+        archive={archive}
+        storage={storage}
+      />,
+    );
+    const user = userEvent.setup();
+    const stats = screen.getByRole('region', { name: 'Statistics' });
+    expect(within(stats).getByRole('row', { name: /Easy/ })).toHaveTextContent('Easy100');
+    const list = screen.getByRole('region', { name: 'Finished games' });
+    expect(list).toHaveTextContent('Win');
+    expect(list).toHaveTextContent('2 moves');
+    expect(list).toHaveTextContent('2:05');
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Result' }), 'loss');
+    expect(list).toHaveTextContent('No game matches these filters.');
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Result' }), 'all');
+
+    // No game in progress: the review opens at once on the play page.
+    await user.click(within(list).getByRole('button', { name: 'Review' }));
+    expect(window.location.hash).toBe('#/');
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: 'Game review' })).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('switches language', async () => {

@@ -15,6 +15,8 @@ import { timing } from './animation';
 import { describeEvent } from './announce';
 import { AnalysisView } from './components/AnalysisView';
 import { EditorView } from './components/EditorView';
+import { ArchiveView } from './components/ArchiveView';
+import { GameArchive, defaultStore } from './archive';
 import { parseRoute, useHash } from './route';
 import type { Preferences } from './preferences';
 import { animationScale, applyPreferences, loadPreferences, savePreferences } from './preferences';
@@ -31,6 +33,8 @@ interface AppProps {
   readonly createAnalysis?: () => AnalysisClient;
   /** Creates the game review client; tests pass one backed by a fake worker. */
   readonly createReview?: () => ReviewClient;
+  /** Keeps finished games; tests pass one in memory. */
+  readonly archive?: GameArchive;
   /** Plays sounds; tests pass one without audio. */
   readonly createSound?: () => SoundPlayer;
   readonly storage?: Storage;
@@ -60,6 +64,7 @@ export function App({
   createAnalysis,
   createReview,
   createSound,
+  archive: givenArchive,
   storage = globalThis.localStorage,
 }: AppProps) {
   const hash = useHash();
@@ -80,6 +85,14 @@ export function App({
     session.start();
     return session.stop;
   }, [session]);
+  const [archive] = useState(() => givenArchive ?? new GameArchive(defaultStore()));
+  useEffect(() => {
+    session.setArchive(archive);
+    void archive.load();
+    return () => {
+      session.setArchive(null);
+    };
+  }, [session, archive]);
 
   const [language, setLanguage] = useState<Language>(() => initialLanguage(storage));
   const i18n = useMemo(() => ({ t: translator(language), language }), [language]);
@@ -204,6 +217,9 @@ export function App({
             <a href="#/editor" aria-current={page === 'editor' ? 'page' : undefined}>
               {t('pageEditor')}
             </a>
+            <a href="#/archive" aria-current={page === 'archive' ? 'page' : undefined}>
+              {t('pageArchive')}
+            </a>
           </nav>
           <div className="header-tools">
             <button
@@ -264,7 +280,22 @@ export function App({
           )}
         </div>
 
-        {route.page === 'editor' ? (
+        {route.page === 'archive' ? (
+          <ArchiveView
+            archive={archive}
+            gameInProgress={
+              game.settings !== null && game.result === null && game.moveList.length > 0
+            }
+            onReview={(archived) => {
+              session.openArchived(archived);
+              setChoosing(false);
+              // The archived game is already over: no game-over dialog for it.
+              setClosedResult(session.getSnapshot().resultId);
+              session.startReview();
+              window.location.hash = '#/';
+            }}
+          />
+        ) : route.page === 'editor' ? (
           <EditorView key={hash} fen={route.fen} />
         ) : route.page === 'analysis' ? (
           // A new link (another position or game) opens a fresh board.

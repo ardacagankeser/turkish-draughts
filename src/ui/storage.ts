@@ -40,6 +40,8 @@ export interface SavedState {
   readonly flipped: boolean;
   readonly showEvaluation: boolean;
   readonly clock: SavedClock | null;
+  /** When the game began (milliseconds since 1970), for its duration in the archive. */
+  readonly startedAt: number | null;
 }
 
 const KEY = 'turkish-draughts:v1';
@@ -53,6 +55,7 @@ export const EMPTY_STATE: SavedState = {
   flipped: false,
   showEvaluation: true,
   clock: null,
+  startedAt: null,
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -122,6 +125,7 @@ export function load(storage: Storage = globalThis.localStorage): SavedState {
       flipped: data.flipped === true,
       showEvaluation: data.showEvaluation !== false,
       clock: parseClock(data.clock),
+      startedAt: typeof data.startedAt === 'number' ? data.startedAt : null,
     };
   } catch {
     return EMPTY_STATE;

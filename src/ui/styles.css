@@ -1638,3 +1638,158 @@ kbd {
 .tb-move.unknown .tb-result {
   color: var(--text-muted);
 }
+
+/* Game archive ----------------------------------------------------------------- */
+.archive-page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.archive-stats,
+.archive-games {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 14px 16px;
+}
+
+.archive-page h2 {
+  margin: 0 0 10px;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.stats-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 8px;
+}
+
+.stats-table th,
+.stats-table td {
+  padding: 4px 6px;
+  text-align: center;
+}
+
+.stats-table th[scope='row'] {
+  text-align: left;
+}
+
+.stats-table .total {
+  border-top: 1px solid var(--border);
+  font-weight: 700;
+}
+
+.suggestion {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  font-weight: 600;
+}
+
+.archive-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.archive-header h2 {
+  margin: 0 auto 0 0;
+}
+
+.archive-header select,
+.archive-header button,
+.game-actions button,
+.game-actions a {
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 9px;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.game-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.game-card {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.game-summary {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 8px;
+  align-items: center;
+}
+
+.game-meta {
+  grid-column: 2;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.game-title {
+  font-weight: 600;
+}
+
+.result-badge {
+  grid-row: span 2;
+  min-width: 6.5rem;
+  padding: 4px 8px;
+  border-radius: 999px;
+  text-align: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+  background: var(--surface-2);
+}
+
+.result-badge.win {
+  color: var(--only);
+}
+
+.result-badge.loss {
+  color: var(--blunder);
+}
+
+.game-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.game-actions button.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--danger-text);
+}
+
+@media (max-width: 760px) {
+  .archive-page {
+    grid-template-columns: 1fr;
+  }
+}
