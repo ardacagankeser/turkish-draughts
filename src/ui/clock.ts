@@ -47,6 +47,8 @@ export class Clock {
   #white: number;
   #black: number;
   #running: Color | null = null;
+  /** The side whose move is decided but not shown yet (see `hold`). */
+  #held: Color | null = null;
   #paused = false;
   #since: number;
 
@@ -84,15 +86,33 @@ export class Clock {
 
   /** `color` has just moved: its time stops, gains the increment, and the opponent's runs. */
   moved(color: Color): void {
-    const wasRunning = this.#running === color;
+    const wasRunning = this.#running === color || this.#held === color;
     this.#settle();
+    this.#held = null;
     if (wasRunning) this.#add(color, this.control.incrementMs);
     this.#running = color === 1 ? -1 : 1;
+  }
+
+  /**
+   * `color` has decided its move, which waits for the board to finish animating the last
+   * one: its time stops now, and neither side's runs until `moved` shows the move.
+   */
+  hold(color: Color): void {
+    if (this.#running !== color) return;
+    this.#settle();
+    this.#running = null;
+    this.#held = color;
+  }
+
+  /** The side whose decided move has not been shown yet. */
+  get held(): Color | null {
+    return this.#held;
   }
 
   /** Runs `color`'s time (after a take-back, or when a saved game is resumed). */
   run(color: Color | null): void {
     this.#settle();
+    this.#held = null;
     this.#running = color;
   }
 

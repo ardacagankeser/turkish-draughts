@@ -448,6 +448,54 @@ describe('GameSession', () => {
       vi.useRealTimers();
     });
 
+    it('waits for the board before showing the reply, without charging either clock', async () => {
+      const { session } = timed(1);
+      session.clickSquare(sq('c3'));
+      session.clickSquare(sq('c4'));
+      // The board animates the player's move for 3 s, longer than the computer thinks.
+      session.boardSettles(3000);
+      await vi.advanceTimersByTimeAsync(1000);
+      let snapshot = session.getSnapshot();
+      expect(snapshot.moveList).toEqual(['c3-c4']);
+      // The computer has decided: its time stopped, and nobody's runs while it waits.
+      expect(snapshot.clock?.running).toBeNull();
+      const black = snapshot.clock?.black ?? 0;
+      await vi.advanceTimersByTimeAsync(1500);
+      expect(session.getSnapshot().clock?.black).toBe(black);
+      await vi.advanceTimersByTimeAsync(600);
+      snapshot = session.getSnapshot();
+      expect(snapshot.moveList).toHaveLength(2);
+      // Shown: Black got its increment, and White's time runs from now.
+      expect(snapshot.clock).toMatchObject({ running: 1, black: black + 5000 });
+      expect(snapshot.clock?.white).toBeGreaterThan(59_800);
+      session.stop();
+    });
+
+    it('plays a premove once the reply has been seen, at no cost of time', async () => {
+      const { session } = timed(1);
+      session.clickSquare(sq('c3'));
+      session.clickSquare(sq('c4'));
+      // While the computer thinks, queue a move with another piece.
+      session.clickSquare(sq('a3'));
+      session.clickSquare(sq('a4'));
+      expect(session.getSnapshot().premove).not.toBeNull();
+      await vi.advanceTimersByTimeAsync(600);
+      expect(session.getSnapshot().moveList).toHaveLength(2);
+      // The board shows the reply for 2 s; the premove waits, and White's time does not run.
+      session.boardSettles(2000);
+      await vi.advanceTimersByTimeAsync(1500);
+      let snapshot = session.getSnapshot();
+      expect(snapshot.moveList).toHaveLength(2);
+      expect(snapshot.clock?.running).toBeNull();
+      await vi.advanceTimersByTimeAsync(600);
+      snapshot = session.getSnapshot();
+      expect(snapshot.moveList).toHaveLength(3);
+      expect(snapshot.moveList[2]).toBe('a3-a4');
+      // A premove takes no time, so White just gains the increment.
+      expect(snapshot.clock?.white).toBe(65_000);
+      session.stop();
+    });
+
     it('loses on time, whatever the position, with a warning at ten seconds', async () => {
       const { session } = timed(-1);
       // The computer's first move is free; then the player's time runs.

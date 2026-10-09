@@ -226,6 +226,8 @@ export class GameSession {
   #flipped: boolean;
   #resultId = 0;
   readonly #now: () => number;
+  /** When the board will have finished animating the move it shows (see `boardSettles`). */
+  #settledAt = 0;
   readonly #reviewer: ReviewClient;
   #review: {
     positions: (ReviewPosition | undefined)[];
@@ -324,6 +326,14 @@ export class GameSession {
     clearTimeout(this.#flagTimer);
     clearTimeout(this.#lowTimeTimer);
     this.#thinking = false;
+  };
+
+  /**
+   * The board says how long the animation of the move it just showed lasts. The computer's
+   * reply and a queued premove wait until then, so a move never plays over another.
+   */
+  readonly boardSettles = (ms: number): void => {
+    this.#settledAt = this.#now() + ms;
   };
 
   /** Pauses the clocks while the page is hidden, as players expect against the computer. */
@@ -745,10 +755,28 @@ export class GameSession {
     const [move] = matching;
     if (matching.length !== 1 || !move) return;
     const ply = this.#game.history.length;
+    const human = this.#game.turn;
+    // A premove costs no time (as on lichess): the player's clock stops at once, though the
+    // move waits for the computer's move to be seen.
+    this.#clock?.hold(human);
     clearTimeout(this.#premoveTimer);
-    this.#premoveTimer = setTimeout(() => {
-      if (this.#canPlay() && this.#game.history.length === ply) this.#commit(move);
-    }, PREMOVE_DELAY_MS);
+    const play = () => {
+      const wait = this.#settledAt - this.#now();
+      if (wait > 0) {
+        this.#premoveTimer = setTimeout(play, wait);
+        return;
+      }
+      if (this.#canPlay() && this.#game.history.length === ply) {
+        this.#commit(move);
+        return;
+      }
+      // Dropped after all: the player's time runs again.
+      if (this.#clock?.held === human && !this.#game.isOver) {
+        this.#clock.run(human);
+        this.#emit();
+      }
+    };
+    this.#premoveTimer = setTimeout(play, PREMOVE_DELAY_MS);
   }
 
   #displayedPly(): number {
@@ -903,12 +931,25 @@ export class GameSession {
           LEVEL_OPTIONS[settings.level].timeMs ?? Infinity,
         )
       : undefined;
-    Promise.all([
-      this.#ai.chooseMove(INITIAL_FEN, this.#moves(), settings.level, timeMs),
-      sleep(MIN_AI_DELAY_MS),
-    ])
-      .then(([response]) => {
+    const ai = this.#game.turn;
+    const decided = this.#ai
+      .chooseMove(INITIAL_FEN, this.#moves(), settings.level, timeMs)
+      .then((response) => {
+        // The computer's time stops as soon as it has decided, even if its move waits for
+        // the board to finish showing the player's move.
+        if (token === this.#token && response.move) {
+          if (this.#clock?.flagged()) this.#timeOut();
+          else this.#clock?.hold(ai);
+          this.#emit();
+        }
+        return response;
+      });
+    Promise.all([decided, sleep(MIN_AI_DELAY_MS)])
+      .then(async ([response]) => {
         if (token !== this.#token) return;
+        const wait = this.#settledAt - this.#now();
+        if (wait > 0) await sleep(wait);
+        if (token !== this.#token || this.#game.isOver) return;
         this.#thinking = false;
         if (!response.move) {
           this.#emit();
